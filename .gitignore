@@ -1,0 +1,29 @@
+# Node
+node_modules
+dist
+out
+build
+*.log
+
+# Electron
+*.exe
+*.zip
+*.dmg
+*.pkg
+*.app
+*.dmg.blockmap
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Env
+.env
+.env.local

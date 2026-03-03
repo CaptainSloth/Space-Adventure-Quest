@@ -1,0 +1,168 @@
+:root {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: #000;
+  color: #aaa; /* Default gray %7 */
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  overflow: hidden;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+#root {
+  height: 100%;
+}
+
+.container {
+  border: 4px double #555;
+  padding: 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.1);
+}
+
+.header {
+  border-bottom: 1px solid #555;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  text-align: center;
+}
+
+h1 {
+  margin: 0;
+  text-transform: uppercase;
+  font-size: 1.8rem;
+}
+
+pre.ascii-art {
+  font-family: inherit;
+  margin: 10px auto;
+  color: #fff;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.description {
+  margin: 20px 0;
+  line-height: 1.4;
+  font-size: 1.1rem;
+}
+
+.message-box {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px dashed #ff0;
+  color: #ff0;
+  background: rgba(255, 255, 0, 0.05);
+}
+
+.registration-form {
+  margin: 20px 0;
+  padding: 15px;
+  border: 1px solid #555;
+}
+
+.options {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #555;
+  padding-top: 20px;
+}
+
+.option {
+  cursor: pointer;
+  display: flex;
+  gap: 15px;
+  padding: 5px 10px;
+  transition: all 0.1s;
+}
+
+.option:hover {
+  background-color: #333;
+  color: #fff;
+}
+
+.option-key {
+  color: #ff5; /* Light yellow %b */
+  font-weight: bold;
+  min-width: 30px;
+}
+
+.option-label {
+  text-transform: uppercase;
+}
+
+.bbs-input {
+  background: #111;
+  border: 1px solid #555;
+  color: #5f5; /* Light green %a */
+  font-family: inherit;
+  font-size: 1.1rem;
+  padding: 8px;
+  width: 100%;
+  max-width: 300px;
+  outline: none;
+  margin-top: 10px;
+}
+
+.bbs-input:focus {
+  border-color: #5f5;
+}
+
+.loading-indicator {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: #ff5;
+  font-weight: bold;
+  font-size: 0.8rem;
+  padding: 2px 5px;
+  background: #a00;
+  animation: blink 0.5s step-end infinite;
+}
+
+/* Sansi Colors (BBS Palette) */
+.sansi-0 { color: #000000; } /* Black */
+.sansi-1 { color: #aa0000; } /* Red */
+.sansi-2 { color: #00aa00; } /* Green */
+.sansi-3 { color: #aa5500; } /* Yellow/Brown */
+.sansi-4 { color: #0000aa; } /* Blue */
+.sansi-5 { color: #aa00aa; } /* Magenta */
+.sansi-6 { color: #00aaaa; } /* Cyan */
+.sansi-7 { color: #aaaaaa; } /* White/Gray */
+.sansi-8 { color: #555555; } /* Dark Gray */
+.sansi-9 { color: #ff5555; } /* Light Red */
+.sansi-a { color: #55ff55; } /* Light Green */
+.sansi-b { color: #ffff55; } /* Light Yellow */
+.sansi-c { color: #5555ff; } /* Light Blue */
+.sansi-d { color: #ff55ff; } /* Light Magenta */
+.sansi-e { color: #55ffff; } /* Light Cyan */
+.sansi-f { color: #ffffff; } /* Bright White */
+
+.sansi-bold { font-weight: bold; color: inherit; filter: brightness(1.2); }
+.sansi-blink { animation: blink 1s step-end infinite; }
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Scrollbar for BBS feel */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #111;
+}
+::-webkit-scrollbar-thumb {
+  background: #444;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
