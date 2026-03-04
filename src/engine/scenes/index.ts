@@ -374,9 +374,41 @@ ${r?.alignment.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.va
       { label: 'Alignment: HERO', key: 'H', action: async (s) => ({ ...s, player: { ...s.player!, alignment: 500 }, lastMessage: 'Alignment set to Heroic.' }) },
       { label: 'Alignment: VILLAIN', key: 'V', action: async (s) => ({ ...s, player: { ...s.player!, alignment: -500 }, lastMessage: 'Alignment set to Villainous.' }) },
       { label: 'NPC Editor', key: 'N', action: async (s) => ({ ...s, currentScene: 'admin_npcs' }) },
+      { label: 'Ship Editor', key: 'Y', action: async (s) => ({ ...s, currentScene: 'admin_ships' }) },
       { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
+  admin_ships: (state) => {
+    // Import templates here to avoid circular dep if needed, but they are in engine/ships.ts
+    const { SHIP_TEMPLATES } = require('../ships')
+    return {
+      title: '`%1ADMIN: SHIP EDITOR` %7',
+      description: 'Select a ship template to instantly commission it for your pilot.',
+      options: [
+        ...SHIP_TEMPLATES.map((t: any, i: number) => ({
+          label: `[TIER ${t.tier}] Commission ${t.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            return {
+              ...s,
+              player: { ...s.player!, shipId: t.name, maxTurns: 75 + (t.tier * 5) },
+              pendingShipPurchase: {
+                templateId: t.id,
+                instanceName: `Admin ${t.name}`,
+                holds: t.baseHolds,
+                shields: t.baseShields,
+                fighters: t.baseFighters,
+                cost: 0,
+                tier: t.tier
+              },
+              lastMessage: `Admin override: Commissioned ${t.name}.`
+            }
+          }
+        })),
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
   admin_npcs: (state) => {
     const npcs = dbOps.getNpcsInSector(state.player!.sectorId) as any[]
     return {
