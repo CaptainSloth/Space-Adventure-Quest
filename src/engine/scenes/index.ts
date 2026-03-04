@@ -3,6 +3,7 @@ import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatS
 import { getPortInventory } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
 import { dbOps } from '../../main/db'
+import { createDuel, playCard, passRound } from '../duels'
 
 export type SceneRegistry = {
   [K in SceneId]?: (state: GameState) => SceneViewModel

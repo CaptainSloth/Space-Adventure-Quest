@@ -225,6 +225,33 @@ export interface GameState {
     suffixId?: number
     step: 'menu' | 'template_list' | 'modifier_list' | 'build_template' | 'build_prefix' | 'build_suffix' | 'review'
   }
+  currentDuel: DuelState | null
+}
+
+export interface DuelRow {
+  cards: StarCard[]
+  score: number
+  isWeathered?: boolean
+}
+
+export interface DuelSide {
+  name: string
+  hand: StarCard[]
+  vanguard: DuelRow
+  fleet: DuelRow
+  support: DuelRow
+  score: number
+  lives: number
+  hasPassed: boolean
+}
+
+export interface DuelState {
+  player: DuelSide
+  opponent: DuelSide
+  round: number
+  turn: 'player' | 'opponent'
+  log: string[]
+  winner: 'player' | 'opponent' | null
 }
 
 export interface SerializableSceneOption {
@@ -267,6 +294,7 @@ export interface SerializableSceneViewModel {
   shipyardStock?: any[]
   playerDeck?: PlayerCard[]
   allStarCards?: StarCard[]
+  currentDuel?: DuelState | null
 }
 
 export interface SceneOption extends SerializableSceneOption {
