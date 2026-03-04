@@ -717,6 +717,27 @@ LOG: ${log.slice(-1)[0]}
           let finalSectorId = id
           let finalPlayer = { ...s.player, turns: s.player.turns - 1 }
 
+          // Smuggling Check: Detection in Faction Space
+          const cargo = dbOps.getPlayerCargo(s.player!.id) as any[]
+          const hasContraband = cargo.some(c => c.commodity === 'contraband')
+          const isFactionSpace = id === 1 || id === 500 // HQs
+          
+          if (hasContraband && isFactionSpace && Math.random() < 0.5) {
+            const fine = Math.floor(s.player!.credits * 0.2)
+            dbOps.updatePlayerCredits(s.player!.id, -fine)
+            // Remove contraband
+            const db = dbOps.getDb()
+            db.prepare('DELETE FROM player_cargo WHERE playerId = ? AND commodity = "contraband"').run(s.player!.id)
+            finalPlayer.credits -= fine
+            finalPlayer.alignment -= 50
+            return { 
+              ...s, 
+              player: { ...finalPlayer, sectorId: id }, 
+              currentScene: 'bridge', 
+              lastMessage: `POLICE INTERCEPTION! Contraband detected and confiscated. You have been fined ${fine} cr.` 
+            }
+          }
+
           // Hazard: Black Hole
           if (targetSector.type === 'black_hole') {
             const randomSector = Math.floor(Math.random() * 500) + 1
