@@ -22,13 +22,19 @@ export const BASE_PRICES: Record<Commodity, number> = {
 export function calculateDynamicPrice(commodity: Commodity, currentStock: number, isBuyForPort: boolean): number {
   const base = BASE_PRICES[commodity]
   const idealStock = 1000
-  const clampedStock = Math.max(50, Math.min(5000, currentStock))
-  const multiplier = idealStock / clampedStock
-  const midPrice = base * multiplier
   
+  // Market Curve: Prices spike sharply when stock is very low, 
+  // and bottom out slowly as stock becomes abundant.
+  // Formula: price = base * (ideal / current)^1.2
+  const ratio = idealStock / Math.max(1, currentStock)
+  const marketCurve = Math.pow(ratio, 1.2)
+  const midPrice = base * marketCurve
+  
+  // Apply spread (Port profit margin)
+  // Ports buy low, sell high
   return isBuyForPort 
-    ? Math.floor(midPrice * 0.9) 
-    : Math.floor(midPrice * 1.1)
+    ? Math.max(1, Math.floor(midPrice * 0.85)) // Port buys from player
+    : Math.max(1, Math.floor(midPrice * 1.15)) // Port sells to player
 }
 
 export const getPortInventory = (portType: number): PortInventory => {

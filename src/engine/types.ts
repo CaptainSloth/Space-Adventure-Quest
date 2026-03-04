@@ -147,6 +147,7 @@ export interface CombatSide {
   fighters: number
   weaponPower: number
   isNpc: boolean
+  shipTier: number
 }
 
 export interface CombatState {
