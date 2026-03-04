@@ -98,6 +98,29 @@ export interface CombatState {
   log: string[]
 }
 
+export interface ChatMessage {
+  id: number
+  message: string
+  createdAt: string
+  playerName: string
+}
+
+export interface GlobalEvent {
+  id: number
+  type: string
+  payload: string
+  createdAt: string
+}
+
+export interface OnlinePlayer {
+  id: string
+  name: string
+  faction: Faction
+  alignment: number
+  shipId: string | null
+  level: number
+}
+
 export interface GameState {
   player: Player | null
   currentSector: Sector | null
@@ -106,6 +129,9 @@ export interface GameState {
   currentPlanets: Planet[]
   selectedPlanetId: string | null
   combat: CombatState | null
+  onlinePlayers: OnlinePlayer[]
+  chatMessages: ChatMessage[]
+  globalEvents: GlobalEvent[]
 }
 
 export interface SerializableSceneOption {
@@ -121,6 +147,9 @@ export interface SerializableSceneViewModel {
   lastMessage?: string | null
   selectedPlanetId?: string | null
   playerList?: { id: string, name: string }[]
+  onlinePlayers?: OnlinePlayer[]
+  chatMessages?: ChatMessage[]
+  globalEvents?: GlobalEvent[]
 }
 
 export interface SceneOption extends SerializableSceneOption {

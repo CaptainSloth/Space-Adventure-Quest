@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatSide } from '../types'
+import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatSide, OnlinePlayer, ChatMessage, GlobalEvent } from '../types'
 import { getPortInventory } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
 import { dbOps, getDb } from '../../main/db'
@@ -22,7 +22,10 @@ export const toSerializable = (
   vm: SceneViewModel, 
   lastMessage?: string | null, 
   selectedPlanetId?: string | null,
-  playerList?: { id: string, name: string }[]
+  playerList?: { id: string, name: string }[],
+  onlinePlayers?: OnlinePlayer[],
+  chatMessages?: ChatMessage[],
+  globalEvents?: GlobalEvent[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -31,6 +34,9 @@ export const toSerializable = (
     lastMessage,
     selectedPlanetId,
     playerList,
+    onlinePlayers,
+    chatMessages,
+    globalEvents,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -97,7 +103,16 @@ What are your orders, Captain?`,
       { label: 'Shipyard', key: 'Y', action: async (s) => ({ ...s, currentScene: 'shipyard' }) },
       { label: 'Inventory', key: 'I', action: async (s) => ({ ...s, currentScene: 'inventory' }) },
       { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
+      { label: 'Comm Link (Chat)', key: 'C', action: async (s) => ({ ...s, currentScene: 'messages' }) },
       { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+    ]
+  }),
+  messages: (state) => ({
+    title: '`%bSECTOR COMM LINK` %7',
+    description: `Open channel for Sector \`%f${state.currentSector?.id}\`%7. 
+\`%a${state.onlinePlayers?.length || 0}\`%7 other pilot(s) detected on scanners.`,
+    options: [
+      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
   admin: (state) => ({
@@ -294,6 +309,7 @@ Available Warps: ${(state.currentSector?.warps || []).join(', ')}`,
       description: `You scan the sector.
 Planets: \`%c${state.currentPlanets.length}\`%7
 Other Ships: ${isAvailable ? '1 (Detected: Captain Vex)' : '0'}
+Other Pilots: \`%c${state.onlinePlayers?.length || 0}\`%7
 Hazards: None`,
       options: [
         ...(isAvailable ? [
@@ -330,6 +346,37 @@ Hazards: None`,
           },
 
         ] : []),
+        // Iterate through online players to add Attack options
+        ...(state.onlinePlayers || []).map((p, i) => ({
+          label: `Attack ${p.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            const attacker: CombatSide = {
+              id: s.player!.id,
+              name: s.player!.name,
+              shields: s.player!.shields || 100,
+              maxShields: (s.player!.shieldLevel || 1) * 100,
+              fighters: 0,
+              weaponPower: 15 + ((s.player!.weaponLevel || 1) * 5),
+              isNpc: false
+            }
+            const defender: CombatSide = {
+              id: p.id,
+              name: p.name,
+              shields: 100, // We would fetch their real shields here ideally
+              maxShields: 100,
+              fighters: 0,
+              weaponPower: 15,
+              isNpc: false
+            }
+            return {
+              ...s,
+              currentScene: 'combat',
+              lastMessage: null,
+              combat: initCombat(attacker, defender)
+            }
+          }
+        })),
         { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
       ]
     }
@@ -368,15 +415,19 @@ ${log.slice(-5).join('\n')}
           action: async (s) => {
             const loot = Math.floor(Math.random() * 500) + 100
             dbOps.updatePlayerCredits(s.player!.id, loot)
-            dbOps.setNpcCooldown(defender.id, new Date().toISOString())
+            if (defender.isNpc) {
+              dbOps.setNpcCooldown(defender.id, new Date().toISOString())
+            } else {
+              dbOps.insertGlobalEvent('PLAYER_KILLED', `Captain ${attacker.name} defeated Captain ${defender.name} in Sector ${s.player!.sectorId}.`)
+            }
             return { 
               ...s, 
               player: { 
                 ...s.player!, 
                 credits: s.player!.credits + loot,
-                alignment: s.player!.alignment + 10
+                alignment: s.player!.alignment + (defender.isNpc ? 10 : -10) // PvP reduces alignment
               },
-              lastMessage: `Victory! You looted ${loot} credits from ${defender.name}. Your reputation increases.` 
+              lastMessage: `Victory! You looted ${loot} credits from ${defender.name}.` 
             }
           } 
         }] : [{ 

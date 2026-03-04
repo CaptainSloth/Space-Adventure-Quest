@@ -1,7 +1,7 @@
 :root {
   font-family: 'Courier New', Courier, monospace;
   background-color: #000;
-  color: #aaa; /* Default gray %7 */
+  color: #aaa;
 }
 
 body {
@@ -27,7 +27,7 @@ body {
   flex-direction: column;
   position: relative;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.1);
-  margin-bottom: 5px; /* Extra breathing room */
+  margin-bottom: 5px;
 }
 
 .header {
@@ -99,7 +99,7 @@ pre.ascii-art {
 }
 
 .option-key {
-  color: #ff5; /* Light yellow %b */
+  color: #ff5;
   font-weight: bold;
   min-width: 30px;
 }
@@ -111,7 +111,7 @@ pre.ascii-art {
 .bbs-input {
   background: #111;
   border: 1px solid #555;
-  color: #5f5; /* Light green %a */
+  color: #5f5;
   font-family: inherit;
   font-size: 1.1rem;
   padding: 8px;
@@ -137,23 +137,22 @@ pre.ascii-art {
   animation: blink 0.5s step-end infinite;
 }
 
-/* Sansi Colors (BBS Palette) */
-.sansi-0 { color: #000000; } /* Black */
-.sansi-1 { color: #aa0000; } /* Red */
-.sansi-2 { color: #00aa00; } /* Green */
-.sansi-3 { color: #aa5500; } /* Yellow/Brown */
-.sansi-4 { color: #0000aa; } /* Blue */
-.sansi-5 { color: #aa00aa; } /* Magenta */
-.sansi-6 { color: #00aaaa; } /* Cyan */
-.sansi-7 { color: #aaaaaa; } /* White/Gray */
-.sansi-8 { color: #555555; } /* Dark Gray */
-.sansi-9 { color: #ff5555; } /* Light Red */
-.sansi-a { color: #55ff55; } /* Light Green */
-.sansi-b { color: #ffff55; } /* Light Yellow */
-.sansi-c { color: #5555ff; } /* Light Blue */
-.sansi-d { color: #ff55ff; } /* Light Magenta */
-.sansi-e { color: #55ffff; } /* Light Cyan */
-.sansi-f { color: #ffffff; } /* Bright White */
+.sansi-0 { color: #000000; }
+.sansi-1 { color: #aa0000; }
+.sansi-2 { color: #00aa00; }
+.sansi-3 { color: #aa5500; }
+.sansi-4 { color: #0000aa; }
+.sansi-5 { color: #aa00aa; }
+.sansi-6 { color: #00aaaa; }
+.sansi-7 { color: #aaaaaa; }
+.sansi-8 { color: #555555; }
+.sansi-9 { color: #ff5555; }
+.sansi-a { color: #55ff55; }
+.sansi-b { color: #ffff55; }
+.sansi-c { color: #5555ff; }
+.sansi-d { color: #ff55ff; }
+.sansi-e { color: #55ffff; }
+.sansi-f { color: #ffffff; }
 
 .sansi-bold { font-weight: bold; color: inherit; filter: brightness(1.2); }
 .sansi-blink { animation: blink 1s step-end infinite; }
@@ -162,7 +161,69 @@ pre.ascii-art {
   50% { opacity: 0; }
 }
 
-/* Scrollbar for BBS feel */
+/* Multiplayer UI */
+.event-feed {
+  background: #002200;
+  border-bottom: 1px solid #0f0;
+  padding: 5px;
+  color: #5f5;
+  font-size: 0.9rem;
+  margin: -20px -20px 20px -20px;
+}
+
+.chat-interface {
+  border: 1px solid #555;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  background: #050505;
+}
+
+.chat-message {
+  margin-bottom: 5px;
+  line-height: 1.2;
+}
+
+.chat-time {
+  color: #555;
+  font-size: 0.8rem;
+}
+
+.chat-author {
+  color: #5ff;
+  font-weight: bold;
+}
+
+.chat-text {
+  color: #fff;
+}
+
+.chat-input-row {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid #555;
+  padding: 5px 10px;
+  background: #111;
+}
+
+.chat-input {
+  flex: 1;
+  border: none;
+  margin-top: 0;
+  background: transparent;
+}
+
+.chat-input:focus {
+  border: none;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
 }

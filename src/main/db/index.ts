@@ -142,5 +142,47 @@ export const dbOps = {
   },
   refillPlayerTurns: (playerId: string) => {
     return db.prepare('UPDATE players SET turns = maxTurns WHERE id = ?').run(playerId)
+  },
+  updatePlayerHeartbeat: (playerId: string) => {
+    return db.prepare("UPDATE players SET lastSeen = datetime('now') WHERE id = ?").run(playerId)
+  },
+  getOnlinePlayersInSector: (sectorId: number, excludePlayerId: string) => {
+    // Online in the last 2 minutes (120 seconds)
+    return db.prepare(`
+      SELECT id, name, faction, alignment, shipId, level 
+      FROM players 
+      WHERE sectorId = ? AND id != ? AND lastSeen > datetime('now', '-120 seconds')
+    `).all(sectorId, excludePlayerId)
+  },
+  insertSectorMessage: (sectorId: number, playerId: string, message: string) => {
+    return db.prepare(`
+      INSERT INTO sector_messages (sectorId, playerId, message, createdAt) 
+      VALUES (?, ?, ?, datetime('now'))
+    `).run(sectorId, playerId, message)
+  },
+  getSectorMessages: (sectorId: number, limit: number = 10) => {
+    return db.prepare(`
+      SELECT sm.id, sm.message, sm.createdAt, p.name as playerName
+      FROM sector_messages sm
+      LEFT JOIN players p ON sm.playerId = p.id
+      WHERE sm.sectorId = ?
+      ORDER BY sm.id DESC
+      LIMIT ?
+    `).all(sectorId, limit).reverse()
+  },
+  insertGlobalEvent: (type: string, payload: string) => {
+    return db.prepare(`
+      INSERT INTO events (targetPlayerId, type, payload, createdAt)
+      VALUES ('GLOBAL', ?, ?, datetime('now'))
+    `).run(type, payload)
+  },
+  getGlobalEvents: (limit: number = 5) => {
+    return db.prepare(`
+      SELECT id, type, payload, createdAt
+      FROM events
+      WHERE targetPlayerId = 'GLOBAL'
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(limit)
   }
 }

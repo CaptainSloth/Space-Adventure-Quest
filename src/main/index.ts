@@ -12,7 +12,10 @@ let currentState: GameState = {
   lastMessage: null,
   currentPlanets: [],
   selectedPlanetId: null,
-  combat: null
+  combat: null,
+  onlinePlayers: [],
+  chatMessages: [],
+  globalEvents: []
 }
 
 function createWindow(): void {
@@ -58,7 +61,7 @@ app.whenReady().then(() => {
     if (currentState.currentScene === 'login') {
       playerList = dbOps.getAllPlayers()
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
   })
 
   ipcMain.handle('execute-action', async (_, key: string) => {
@@ -80,9 +83,10 @@ app.whenReady().then(() => {
               shields = ?, 
               weaponLevel = ?, 
               shieldLevel = ?, 
-              engineLevel = ?
+              engineLevel = ?,
+              alignment = ?
             WHERE id = ?
-          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.id)
+          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.alignment, p.id)
           
           // If sector changed, update planets
           if (p.sectorId !== currentState.player?.sectorId) {
@@ -102,7 +106,25 @@ app.whenReady().then(() => {
     if (currentState.currentScene === 'login') {
       playerList = dbOps.getAllPlayers()
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
+  })
+
+  ipcMain.handle('poll-state', async () => {
+    if (currentState.player) {
+      dbOps.updatePlayerHeartbeat(currentState.player.id)
+      currentState.onlinePlayers = dbOps.getOnlinePlayersInSector(currentState.player.sectorId, currentState.player.id) as any
+      currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
+      currentState.globalEvents = dbOps.getGlobalEvents() as any
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
+  })
+
+  ipcMain.handle('send-message', async (_, message: string) => {
+    if (currentState.player) {
+      dbOps.insertSectorMessage(currentState.player.sectorId, currentState.player.id, message)
+      currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
   })
 
   ipcMain.handle('create-character', async (_, name: string, faction: string) => {
@@ -143,7 +165,8 @@ app.whenReady().then(() => {
     currentState.currentPlanets = planets
     currentState.currentScene = 'bridge'
     currentState.lastMessage = `Welcome, ${name}!`
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId)
+    dbOps.insertGlobalEvent('NEW_PLAYER', `Captain ${name} has entered the galaxy.`)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
   })
 
   ipcMain.handle('login-id', async (_, playerId: string) => {
@@ -153,7 +176,7 @@ app.whenReady().then(() => {
     
     if (!player) {
       currentState.lastMessage = `Pilot record not found.`
-      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
     }
 
     const sectorData = dbOps.getSector(player.sectorId)
@@ -176,7 +199,8 @@ app.whenReady().then(() => {
     currentState.currentPlanets = planets
     currentState.currentScene = 'bridge'
     currentState.lastMessage = `Welcome back, Captain ${player.name}.`
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+    dbOps.insertGlobalEvent('PLAYER_LOGIN', `Captain ${player.name} has resumed command.`)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
   })
 
   ipcMain.handle('claim-planet', async (_, planetId: string) => {
@@ -184,7 +208,9 @@ app.whenReady().then(() => {
     dbOps.claimPlanet(planetId, currentState.player.id, 'player')
     currentState.currentPlanets = dbOps.getPlanetsBySector(currentState.player.sectorId)
     currentState.lastMessage = 'Planet claimed!'
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId)
+    const planet = currentState.currentPlanets.find(p => p.id === planetId)
+    dbOps.insertGlobalEvent('PLANET_CLAIM', `Captain ${currentState.player.name} claimed ${planet?.name} in Sector ${currentState.player.sectorId}.`)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents)
   })
 
   createWindow()
