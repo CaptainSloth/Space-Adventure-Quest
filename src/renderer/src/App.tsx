@@ -17,6 +17,11 @@ interface SceneViewModel {
   onlinePlayers?: any[]
   chatMessages?: any[]
   globalEvents?: any[]
+  currentCompany?: any
+  companyMembers?: any[]
+  availableCompanies?: any[]
+  companyChatMessages?: any[]
+  companyAlliances?: any[]
 }
 
 const App: React.FC = () => {
@@ -52,7 +57,7 @@ const App: React.FC = () => {
     refreshScene()
   }, [refreshScene])
 
-  // Polling loop for Phase 3 multiplayer
+  // Polling loop for Phase 3/4 multiplayer
   useEffect(() => {
     if (!vm) return
     const isGameScene = !['SPACE ADVENTURE QUEST', 'CHARACTER LOGIN', 'CHARACTER REGISTRATION'].some(t => vm.title.includes(t))
@@ -64,13 +69,11 @@ const App: React.FC = () => {
         const newVm = await window.api.invoke('poll-state')
         setVm(newVm)
 
-        // Process new global events for notifications
         if (newVm.globalEvents) {
           const newEvents = newVm.globalEvents.filter((e: any) => e.id > lastEventId.current)
           if (newEvents.length > 0) {
             lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
             setNotifications(prev => [...prev, ...newEvents.map((e: any) => e.payload)])
-            // Clear notification after 5 seconds
             setTimeout(() => {
               setNotifications(prev => prev.slice(1))
             }, 5000)
@@ -88,16 +91,28 @@ const App: React.FC = () => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [vm?.chatMessages])
+  }, [vm?.chatMessages, vm?.companyChatMessages])
 
   const handleAction = async (key: string) => {
     setLoading(true)
     let newVm
     
-    // Check if we are claiming a planet
     if (vm?.title.includes('PLANET:') && key === 'C' && selectedPlanetId) {
       // @ts-ignore
       newVm = await window.api.invoke('claim-planet', selectedPlanetId)
+    } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
+      const company = vm.availableCompanies?.[parseInt(key) - 1]
+      if (company) {
+        // @ts-ignore
+        newVm = await window.api.invoke('join-company', company.id)
+      } else {
+        // @ts-ignore
+        newVm = await window.api.invoke('execute-action', key)
+      }
+    } else if (vm?.title.includes('COMPANY:') && key === 'T') {
+       // Quick deposit for testing
+       // @ts-ignore
+       newVm = await window.api.invoke('deposit-treasury', 1000)
     } else {
       // @ts-ignore
       newVm = await window.api.invoke('execute-action', key)
@@ -121,12 +136,29 @@ const App: React.FC = () => {
     setLoading(false)
   }
 
+  const handleCreateCompany = async () => {
+    if (!name) return
+    setLoading(true)
+    // @ts-ignore
+    const newVm = await window.api.invoke('create-company', name)
+    setVm(newVm)
+    setName('')
+    setLoading(false)
+  }
+
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return
     const msg = chatInput
     setChatInput('')
-    // @ts-ignore
-    const newVm = await window.api.invoke('send-message', msg)
+    
+    let newVm
+    if (vm?.title.includes('COMPANY CHAT')) {
+      // @ts-ignore
+      newVm = await window.api.invoke('send-company-message', msg)
+    } else {
+      // @ts-ignore
+      newVm = await window.api.invoke('send-message', msg)
+    }
     setVm(newVm)
   }
 
@@ -169,7 +201,6 @@ const App: React.FC = () => {
 
   return (
     <div className="container">
-      {/* Real-time Pop-up Notifications */}
       <div className="notification-overlay">
         {notifications.map((note, i) => (
           <div key={i} className="notification-toast">
@@ -178,7 +209,6 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      {/* Global Event Feed (Ticker) */}
       {vm.globalEvents && vm.globalEvents.length > 0 && (
         <div className="event-feed">
           <marquee scrollamount="5">
@@ -203,11 +233,11 @@ const App: React.FC = () => {
         {parseSansi(vm.description)}
       </div>
 
-      {/* Sector Chat UI */}
-      {vm.title.includes('COMM LINK') && (
+      {/* Shared Chat UI for Sector and Company */}
+      {(vm.title.includes('COMM LINK') || vm.title.includes('COMPANY CHAT')) && (
         <div className="chat-interface">
           <div className="chat-messages">
-            {vm.chatMessages?.map((msg: any) => (
+            {(vm.title.includes('COMM LINK') ? vm.chatMessages : vm.companyChatMessages)?.map((msg: any) => (
               <div key={msg.id} className="chat-message">
                 <span className="chat-time">[{new Date(msg.createdAt).toLocaleTimeString()}]</span>
                 <span className="chat-author"> {msg.playerName}:</span>
@@ -224,7 +254,7 @@ const App: React.FC = () => {
               onChange={(e) => setChatInput(e.target.value)} 
               autoFocus
               className="bbs-input chat-input"
-              placeholder="Broadcast to sector..."
+              placeholder={vm.title.includes('COMM LINK') ? "Broadcast to sector..." : "Message company..."}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSendMessage()
               }}
@@ -251,9 +281,9 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {vm.title.includes('REGISTRATION') && (
+      {(vm.title.includes('REGISTRATION') || vm.title.includes('FOUND NEW COMPANY')) && (
         <div className="registration-form">
-          <p>Enter your pilot name:</p>
+          <p>Enter Name:</p>
           <input 
             type="text" 
             value={name} 
@@ -262,7 +292,11 @@ const App: React.FC = () => {
             className="bbs-input"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                if (vm.title.includes('LOGIN')) handleLogin()
+                if (vm.title.includes('REGISTRATION')) {
+                   // click handled
+                } else if (vm.title.includes('FOUND NEW COMPANY')) {
+                   handleCreateCompany()
+                }
               }
             }}
           />
@@ -276,6 +310,8 @@ const App: React.FC = () => {
               handleCreateCharacter(opt.label.split(' ')[1].toLowerCase())
             } else if (vm.title.includes('LOGIN') && opt.key === 'S') {
               handleLogin()
+            } else if (vm.title.includes('FOUND NEW COMPANY') && opt.key === 'S') {
+              handleCreateCompany()
             } else {
               handleAction(opt.key)
             }

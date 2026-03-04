@@ -27,7 +27,12 @@ export const toSerializable = (
   chatMessages?: ChatMessage[],
   globalEvents?: GlobalEvent[],
   rankings?: any,
-  bounties?: any[]
+  bounties?: any[],
+  currentCompany?: any,
+  companyMembers?: any[],
+  availableCompanies?: any[],
+  companyChatMessages?: any[],
+  companyAlliances?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -41,6 +46,11 @@ export const toSerializable = (
     globalEvents,
     rankings,
     bounties,
+    currentCompany,
+    companyMembers,
+    availableCompanies,
+    companyChatMessages,
+    companyAlliances,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -88,8 +98,7 @@ const registry: SceneRegistry = {
     description: `Title: ${getAlignmentTitle(state.player?.alignment || 0)} \`%f${state.player?.name}\` %7
 Sector: \`%f${state.player?.sectorId}\` %7 | Turns: \`%f${state.player?.turns}\` %7
 Status: \`%aONLINE\` %7 | Shields: \`%c${state.player?.shields}%\` %7
-
-What are your orders, Captain?`,
+${state.currentCompany ? `Company: \`%b${state.currentCompany.name}\` %7` : ''}`,
     ascii: [
       "      `%8_________`%7",
       "     `%8/         \\`%7",
@@ -109,10 +118,94 @@ What are your orders, Captain?`,
       { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
       { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
       { label: 'Rankings', key: 'K', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
-      { label: 'Comm Link (Chat)', key: 'C', action: async (s) => ({ ...s, currentScene: 'messages' }) },
+      { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },
+      { label: 'Faction HQ', key: 'H', action: async (s) => ({ ...s, currentScene: 'faction_hq' }) },
+      { label: 'Comm Link (Chat)', key: 'M', action: async (s) => ({ ...s, currentScene: 'messages' }) },
       { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
     ]
   }),
+  company: (state) => {
+    if (state.currentCompany) {
+      return {
+        title: `\`%bCOMPANY: ${state.currentCompany.name}\` %7`,
+        description: `CEO: \`%f${state.companyMembers.find(m => m.role === 'ceo')?.playerName}\` %7
+Treasury: \`%e${state.currentCompany.treasury}\` %7 cr
+Members Online: \`%a${state.companyMembers.length}\` %7
+
+Secure company link active.`,
+        options: [
+          { label: 'Member List', key: 'M', action: async (s) => ({ ...s, currentScene: 'company_members' }) },
+          { label: 'Private Chat', key: 'C', action: async (s) => ({ ...s, currentScene: 'company_chat' }) },
+          { label: 'Treasury (Deposit 1k)', key: 'T', action: async (s) => {
+             return { ...s, lastMessage: 'Depositing credits...' } // handled by IPC override in App.tsx
+          }},
+          { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+        ]
+      }
+    }
+
+    return {
+      title: '`%bGALACTIC COMPANIES` %7',
+      description: `You are not currently a member of any company.
+You can found a new company for \`%e5000\` %7 credits or join an existing one.`,
+      options: [
+        { label: 'Found New Company', key: 'F', action: async (s) => ({ ...s, currentScene: 'company_create' }) },
+        ...state.availableCompanies.map((c, i) => ({
+          label: `Join ${c.name} (${c.faction})`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+             return { ...s, lastMessage: `Requesting to join ${c.name}...` }
+          }
+        })),
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
+  company_create: (state) => ({
+    title: '`%bFOUND NEW COMPANY` %7',
+    description: 'Enter the name of your new galactic enterprise. Registration cost: `%e5000` %7 credits.',
+    options: [
+      { label: 'Submit Registration', key: 'S', action: async (s) => ({ ...s, lastMessage: 'Processing registration...' }) },
+      { label: 'Cancel', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) }
+    ]
+  }),
+  company_members: (state) => ({
+    title: '`%bCOMPANY MEMBERS` %7',
+    description: `Current roster for \`%f${state.currentCompany?.name}\` %7:
+${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCase()}] - Level \`%a${m.playerLevel}\` %7`).join('\n')}`,
+    options: [
+      { label: 'Back to Company', key: 'B', action: async (s) => ({ ...s, currentScene: 'company' }) }
+    ]
+  }),
+  company_chat: (state) => ({
+    title: '`%bCOMPANY CHAT` %7',
+    description: `Secure channel for \`%f${state.currentCompany?.name}\` %7.`,
+    options: [
+      { label: 'Back to Company', key: 'B', action: async (s) => ({ ...s, currentScene: 'company' }) }
+    ]
+  }),
+  faction_hq: (state) => {
+    const isHome = (state.player?.faction === 'alliance' && state.player?.sectorId === 1) || 
+                   (state.player?.faction === 'empire' && state.player?.sectorId === 500)
+    
+    if (!isHome) {
+      return {
+        title: '`%1HQ ACCESS DENIED` %7',
+        description: 'You must be at your faction home system to access HQ protocols.',
+        options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
+      }
+    }
+
+    return {
+      title: `\`%e${state.player?.faction?.toUpperCase()} COMMAND HQ\` %7`,
+      description: 'Welcome back, pilot. The war effort continues.',
+      options: [
+        { label: 'Faction Missions', key: 'M', action: async (s) => ({ ...s, lastMessage: 'Missions not yet available.' }) },
+        { label: 'Request Reinforcements', key: 'R', action: async (s) => ({ ...s, lastMessage: 'Reinforcements are already deployed to this system.' }) },
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   bounty_board: (state) => ({
     title: '`%bBOUNTY BOARD` %7',
     description: `Active missions for Captain \`%f${state.player?.name}\` %7:
@@ -299,7 +392,6 @@ Defense: \`%c${planet?.fighters || 0}\` %7 Fighters, \`%c${planet?.shields || 0}
           return { ...s, lastMessage: `Tax rate adjusted to ${nextRate * 100}%.` }
         }},
         { label: 'Rename Planet', key: 'N', action: async (s) => {
-          // In a real BBS we'd use an input scene, but for now let's just cycle some cool names
           const names = ['New Tortuga', 'Sanctuary', 'Alpha Base', 'Outpost 9', 'The Rim']
           const nextName = names[Math.floor(Math.random() * names.length)]
           dbOps.updatePlanetName(planet!.id, nextName)
@@ -415,7 +507,6 @@ Available Warps: ${(state.currentSector?.warps || []).join(', ')}`,
         action: async (s: GameState) => {
           if (!s.player || s.player.turns <= 0) return { ...s, lastMessage: 'Not enough turns!' }
           
-          // Check for Blockades in target sector
           const deployments = dbOps.getSectorDeployments(id)
           const hostileFighters = deployments.filter(d => 
             d.type === 'fighter' && 
@@ -501,14 +592,13 @@ Hazards: None`,
               return {
                 ...s,
                 currentScene: 'combat',
-                lastMessage: null, // Clear stale admin/world messages
+                lastMessage: null,
                 combat: initCombat(attacker, defender)
               }
             }
           },
 
         ] : []),
-        // Iterate through online players to add Attack options
         ...(state.onlinePlayers || []).map((p, i) => ({
           label: `Attack ${p.name}`,
           key: (i + 1).toString(),
@@ -525,7 +615,7 @@ Hazards: None`,
             const defender: CombatSide = {
               id: p.id,
               name: p.name,
-              shields: 100, // We would fetch their real shields here ideally
+              shields: 100,
               maxShields: 100,
               fighters: 0,
               weaponPower: 15,
@@ -581,7 +671,6 @@ ${log.slice(-5).join('\n')}
             let bountyMsg = ''
             if (defender.isNpc) {
               if (defender.id.startsWith('blockade_')) {
-                // Remove the blockade deployment
                 const sectorId = parseInt(defender.id.split('_')[1])
                 const deployments = dbOps.getSectorDeployments(sectorId)
                 const blockade = deployments.find(d => d.type === 'fighter' && d.playerId !== s.player!.id)
@@ -645,7 +734,7 @@ ${log.slice(-5).join('\n')}
               credits: Math.floor(s.player!.credits * 0.5),
               weaponLevel: Math.max(1, s.player!.weaponLevel - 1),
               shieldLevel: Math.max(1, s.player!.shieldLevel - 1),
-              alignment: s.player!.alignment - 20 // Death loses alignment
+              alignment: s.player!.alignment - 20
             },
             currentSector: {
               ...sectorData,

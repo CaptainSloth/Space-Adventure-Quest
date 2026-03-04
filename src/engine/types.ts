@@ -21,6 +21,10 @@ export type SceneId =
   | 'station_services'
   | 'inventory'
   | 'company'
+  | 'company_create'
+  | 'company_manage'
+  | 'company_members'
+  | 'company_chat'
   | 'rankings'
   | 'bounty_board'
   | 'card_collection'
@@ -48,6 +52,8 @@ export interface Player {
   weaponLevel: number
   shieldLevel: number
   engineLevel: number
+  kills: number
+  companyId: string | null
 }
 
 export interface Sector {
@@ -142,6 +148,26 @@ export interface GalacticRankings {
   alignment: RankingEntry[]
 }
 
+export interface Company {
+  id: string
+  name: string
+  ceoPlayerId: string
+  faction: Faction | null
+  treasury: number
+  createdAt: string
+}
+
+export interface CompanyMember {
+  companyId: string
+  playerId: string
+  role: 'ceo' | 'officer' | 'member'
+  joinedAt: string
+  playerName: string
+  playerFaction: Faction
+  playerLevel: number
+  lastSeen: string
+}
+
 export interface GameState {
   player: Player | null
   currentSector: Sector | null
@@ -155,6 +181,11 @@ export interface GameState {
   globalEvents: GlobalEvent[]
   rankings: GalacticRankings | null
   bounties: Bounty[]
+  currentCompany: Company | null
+  companyMembers: CompanyMember[]
+  availableCompanies: Company[]
+  companyChatMessages: ChatMessage[]
+  companyAlliances: any[]
 }
 
 export interface SerializableSceneOption {
@@ -175,6 +206,11 @@ export interface SerializableSceneViewModel {
   globalEvents?: GlobalEvent[]
   rankings?: GalacticRankings | null
   bounties?: Bounty[]
+  currentCompany?: Company | null
+  companyMembers?: CompanyMember[]
+  availableCompanies?: Company[]
+  companyChatMessages?: ChatMessage[]
+  companyAlliances?: any[]
 }
 
 export interface SceneOption extends SerializableSceneOption {
