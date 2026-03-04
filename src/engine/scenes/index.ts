@@ -263,6 +263,33 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
       { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
+  admin_world: (state) => {
+    const settings = dbOps.getWorldSettings() as any[]
+    return {
+      title: '`%1ADMIN: WORLD CONFIGURATION` %7',
+      description: 'Modify global game parameters and behavior.',
+      options: [
+        ...settings.map((s, i) => ({
+          label: `Edit ${s.key}: ${s.value}`,
+          key: (i + 1).toString(),
+          action: async (st: GameState) => ({ ...st, currentScene: 'admin_setting_edit', selectedPlanetId: s.key }) // Use field for key
+        })),
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  admin_setting_edit: (state) => {
+    const key = state.selectedPlanetId
+    const val = dbOps.getSetting(key!)
+    return {
+      title: `\`%1ADMIN: EDIT SETTING [${key?.toUpperCase()}]\` %7`,
+      description: `Current Value: \`%f${val?.value || 'NULL'}\` %7`,
+      options: [
+        { label: 'Set Value', key: 'S', action: async (s) => s }, // Input handled in App.tsx
+        { label: 'Back to World', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_world' }) }
+      ]
+    }
+  },
   admin_players: (state) => {
     const players = dbOps.getAllPlayers()
     return {
