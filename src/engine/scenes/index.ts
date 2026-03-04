@@ -247,9 +247,26 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
       { label: 'Galactic Tick', key: 'K', action: async (s) => ({ ...s, lastMessage: 'Requesting manual galactic economic tick...' }) },
       { label: 'Refill Turns', key: 'T', action: async (s) => ({ ...s, player: { ...s.player!, turns: s.player!.maxTurns }, lastMessage: 'Refilled.' }) },
       { label: 'Ship Editor', key: 'Y', action: async (s) => ({ ...s, currentScene: 'admin_ships', adminBuilder: { step: 'menu' } }) },
+      { label: 'Card Editor', key: 'G', action: async (s) => ({ ...s, currentScene: 'admin_cards' }) },
       { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
+  admin_cards: (state) => {
+    const cards = dbOps.getAllStarCards() as any[]
+    return {
+      title: '`%1ADMIN: CARD EDITOR` %7',
+      description: `Manage card definitions. Total: ${cards.length}`,
+      options: [
+        ...cards.slice(0, 10).map((c, i) => ({ label: `Edit ${c.name}`, key: (i + 1).toString(), action: async (s: any) => s })),
+        { label: 'Delete Last Card', key: 'D', action: async (s) => {
+          const last = cards[cards.length - 1]
+          if (last) dbOps.deleteStarCardDefinition(last.id)
+          return { ...s, lastMessage: 'Removed card.' }
+        }},
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
   admin_ships: (state) => {
     const builder = state.adminBuilder || { step: 'menu' }
     const templates = dbOps.getShipTemplates() as any[]

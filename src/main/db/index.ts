@@ -291,5 +291,21 @@ export const dbOps = {
       drawn.push(choice.id); dbOps.addPlayerCard(playerId, choice.id)
     }
     return drawn
+  },
+  addStarCardDefinition: (card: any) => {
+    return db.prepare(`
+      INSERT INTO star_cards (id, name, type, preferredRow, rarity, power, effect, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(card.id, card.name, card.type, card.preferredRow, card.rarity, card.power, card.effect, card.description)
+  },
+  updateStarCardDefinition: (id: string, card: any) => {
+    return db.prepare(`
+      UPDATE star_cards 
+      SET name = ?, type = ?, preferredRow = ?, rarity = ?, power = ?, effect = ?, description = ?
+      WHERE id = ?
+    `).run(card.name, card.type, card.preferredRow, card.rarity, card.power, card.effect, card.description, id)
+  },
+  deleteStarCardDefinition: (id: string) => {
+    return db.prepare('DELETE FROM star_cards WHERE id = ?').run(id)
   }
 }
