@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDb, dbOps, getDb } from './db'
 import { getSceneViewModel, toSerializable } from '../engine/scenes'
 import { GameState, HudStats } from '../engine/types'
+import { getRandomShipyardStock } from '../engine/ships'
 
 let currentState: GameState = {
   player: null,
@@ -25,7 +26,8 @@ let currentState: GameState = {
   companyAlliances: [],
   playerCargo: [],
   stocks: [],
-  playerPortfolio: []
+  playerPortfolio: [],
+  shipyardStock: getRandomShipyardStock(5)
 }
 
 function createWindow(): void {
@@ -58,14 +60,9 @@ function createWindow(): void {
 
 const getHudStats = (): HudStats | null => {
   if (!currentState.player) return null
-  const shipNames: Record<string, string> = {
-    'scout_wasp': 'Wasp Scout',
-    'trader_hauler': 'Hauler',
-    'frigate_falcon': 'Falcon Frigate'
-  }
   return {
     playerName: currentState.player.name,
-    shipName: shipNames[currentState.player.shipId || ''] || 'Escape Pod',
+    shipName: currentState.player.shipId || 'Escape Pod',
     turns: currentState.player.turns,
     maxTurns: currentState.player.maxTurns,
     credits: currentState.player.credits,
@@ -124,7 +121,8 @@ const returnSerializedScene = () => {
     currentState.playerCargo, 
     getHudStats(), 
     currentState.stocks, 
-    currentState.playerPortfolio
+    currentState.playerPortfolio,
+    currentState.shipyardStock
   )
 }
 
@@ -142,6 +140,12 @@ app.whenReady().then(() => {
     dbOps.insertGlobalEvent('STOCK_UPDATE', 'Galactic markets have shifted. Check the Exchange for updated prices.')
   }, 300000)
 
+  // Shipyard Stock Rotation (Every 10 minutes)
+  setInterval(() => {
+    currentState.shipyardStock = getRandomShipyardStock(5)
+    dbOps.insertGlobalEvent('SHIPYARD_UPDATE', 'New ship hulls have arrived at the Galactic Showroom.')
+  }, 600000)
+
   ipcMain.handle('get-scene', () => returnSerializedScene())
 
   ipcMain.handle('execute-action', async (event, key: string) => {
@@ -158,6 +162,13 @@ app.whenReady().then(() => {
           newState.lastMessage = null
         }
 
+        // Handle Ship Purchase Persistence
+        if (newState.pendingShipPurchase) {
+          console.log('Persisting ship purchase:', newState.pendingShipPurchase.instanceName)
+          dbOps.createPlayerShip(newState.player!.id, newState.pendingShipPurchase)
+          newState.pendingShipPurchase = null // Clear after persistence
+        }
+
         if (newState.player && newState.player !== currentState.player) {
           const p = newState.player
           db.prepare(`
@@ -172,9 +183,10 @@ app.whenReady().then(() => {
               alignment = ?,
               kills = ?,
               companyId = ?,
-              shipId = ?
+              shipId = ?,
+              maxTurns = ?
             WHERE id = ?
-          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.alignment, p.kills || 0, p.companyId, p.shipId, p.id)
+          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.alignment, p.kills || 0, p.companyId, p.shipId, p.maxTurns, p.id)
           
           if (p.sectorId !== currentState.player?.sectorId) {
             const sectorData = dbOps.getSector(p.sectorId)

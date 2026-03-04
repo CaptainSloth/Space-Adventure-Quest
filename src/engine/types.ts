@@ -198,6 +198,8 @@ export interface GameState {
   playerCargo: CargoItem[]
   stocks: any[]
   playerPortfolio: any[]
+  shipyardStock: any[]
+  pendingShipPurchase?: any | null
 }
 
 export interface SerializableSceneOption {
@@ -237,6 +239,7 @@ export interface SerializableSceneViewModel {
   hudStats?: HudStats | null
   stocks?: any[]
   playerPortfolio?: any[]
+  shipyardStock?: any[]
 }
 
 export interface SceneOption extends SerializableSceneOption {

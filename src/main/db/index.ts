@@ -516,5 +516,14 @@ export const dbOps = {
         db.prepare('UPDATE player_stocks SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
       }
     })()
+  },
+  createPlayerShip: (playerId: string, ship: any) => {
+    return db.prepare(`
+      INSERT INTO player_ships (playerId, shipDefId, name, shields, maxShields, fighters, holds)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(playerId, ship.templateId, ship.instanceName, ship.shields, ship.shields, ship.fighters, ship.holds)
+  },
+  getPlayerShip: (playerId: string) => {
+    return db.prepare('SELECT * FROM player_ships WHERE playerId = ? ORDER BY id DESC LIMIT 1').get(playerId)
   }
 }

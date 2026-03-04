@@ -45,7 +45,8 @@ export const toSerializable = (
   playerCargo?: any[],
   hudStats?: any | null,
   stocks?: any[],
-  playerPortfolio?: any[]
+  playerPortfolio?: any[],
+  shipyardStock?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -68,6 +69,7 @@ export const toSerializable = (
     hudStats,
     stocks,
     playerPortfolio,
+    shipyardStock,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -140,31 +142,37 @@ const registry: SceneRegistry = {
       { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
     ]
   }),
-  shipyard: (state) => ({
-    title: '`%eGALACTIC SHIP SHOWROOM` %7',
-    description: `Welcome to the showroom. Browse our selection of specialized hulls.`,
-    options: [
-      { label: 'Buy Wasp Scout (2500 cr)', key: '1', action: async (s) => {
-        if (s.player!.credits >= 2500) {
-          return { ...s, player: { ...s.player!, credits: s.player!.credits - 2500, shipId: 'scout_wasp' }, lastMessage: 'New ship: Wasp Scout.' }
-        }
-        return { ...s, lastMessage: 'Not enough credits!' }
-      }},
-      { label: 'Buy Hauler (5000 cr)', key: '2', action: async (s) => {
-        if (s.player!.credits >= 5000) {
-          return { ...s, player: { ...s.player!, credits: s.player!.credits - 5000, shipId: 'trader_hauler' }, lastMessage: 'New ship: Hauler.' }
-        }
-        return { ...s, lastMessage: 'Not enough credits!' }
-      }},
-      { label: 'Buy Falcon Frigate (15000 cr)', key: '3', action: async (s) => {
-        if (s.player!.credits >= 15000) {
-          return { ...s, player: { ...s.player!, credits: s.player!.credits - 15000, shipId: 'frigate_falcon' }, lastMessage: 'New ship: Falcon Frigate.' }
-        }
-        return { ...s, lastMessage: 'Not enough credits!' }
-      }},
-      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+  shipyard: (state) => {
+    const stock = state.shipyardStock || []
+    return {
+      title: '`%eGALACTIC SHIP SHOWROOM` %7',
+      description: `Welcome to the showroom. Our inventory shifts frequently.
+Current commissioned hulls:`,
+      options: [
+        ...stock.map((ship, i) => ({
+          label: `Buy ${ship.instanceName} (${ship.cost} cr) - Holds: ${ship.holds}, Shields: ${ship.shields}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            if (s.player!.credits >= ship.cost) {
+              return { 
+                ...s, 
+                player: { 
+                  ...s.player!, 
+                  credits: s.player!.credits - ship.cost, 
+                  shipId: ship.instanceName,
+                  maxTurns: 75 + (ship.tier * 5)
+                }, 
+                pendingShipPurchase: ship,
+                lastMessage: `New ship commissioned: ${ship.instanceName}.` 
+              }
+            }
+            return { ...s, lastMessage: 'Insufficient credits for this vessel!' }
+          }
+        })),
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   station_services: (state) => {
     const weaponCost = (state.player?.weaponLevel || 1) * 1000
     const shieldCost = (state.player?.shieldLevel || 1) * 1000
