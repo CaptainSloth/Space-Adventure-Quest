@@ -314,6 +314,66 @@ Status: ${p.isBanned ? '%1BANNED%7' : '%aACTIVE%7'}
       ]
     }
   },
+  admin_galaxy: (state) => {
+    const startId = (state as any).adminPage || 1
+    const sectors = []
+    for (let i = startId; i < startId + 10; i++) {
+      const s = dbOps.getSector(i)
+      if (s) sectors.push(s)
+    }
+
+    return {
+      title: '`%1ADMIN: GALAXY EDITOR` %7',
+      description: `Sectors ${startId} - ${startId + 9}:`,
+      options: [
+        ...sectors.map((s, i) => ({
+          label: `Edit Sec ${s.id}: ${s.name || 'Unnamed'} (${s.type})`,
+          key: (i + 1).toString(),
+          action: async (st: GameState) => ({ ...st, currentScene: 'admin_sector_edit', selectedPlanetId: s.id.toString() })
+        })),
+        { label: 'Next Page', key: 'N', action: async (s) => ({ ...s, adminPage: (startId + 10) % 500 }) },
+        { label: 'Prev Page', key: 'P', action: async (s) => ({ ...s, adminPage: Math.max(1, startId - 10) }) },
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin', adminPage: undefined }) }
+      ]
+    }
+  },
+  admin_sector_edit: (state) => {
+    const sectorId = parseInt(state.selectedPlanetId!)
+    const s = dbOps.getSector(sectorId)
+    const warps = JSON.parse(s.warps) as number[]
+
+    return {
+      title: `\`%1ADMIN: EDITING SECTOR ${sectorId}\` %7`,
+      description: `
+Name: ${s.name || 'Unnamed'}
+Type: \`%b${s.type.toUpperCase()}\` %7
+Warps: ${warps.join(', ')}
+Port Type: ${s.portType || 'None'}
+`,
+      options: [
+        { label: 'Toggle Type (Nebula/Asteroid/BH)', key: 'T', action: async (st) => {
+          const types = ['normal', 'nebula', 'asteroid_field', 'black_hole']
+          const currentIdx = types.indexOf(s.type)
+          const nextType = types[(currentIdx + 1) % types.length]
+          dbOps.updateSectorType(sectorId, nextType)
+          return { ...st, lastMessage: `Sector type set to ${nextType}.` }
+        }},
+        { label: 'Add Warp to Sec 1', key: 'W', action: async (st) => {
+          if (!warps.includes(1)) {
+            warps.push(1)
+            dbOps.updateSectorWarps(sectorId, JSON.stringify(warps))
+            return { ...st, lastMessage: 'Warp to Sector 1 established.' }
+          }
+          return { ...st, lastMessage: 'Warp already exists.' }
+        }},
+        { label: 'Clear All Warps', key: 'C', action: async (st) => {
+          dbOps.updateSectorWarps(sectorId, JSON.stringify([]))
+          return { ...st, lastMessage: 'Sector isolated. All warps cleared.' }
+        }},
+        { label: 'Back to List', key: 'B', action: async (st) => ({ ...st, currentScene: 'admin_galaxy' }) }
+      ]
+    }
+  },
   admin_cards: (state) => {
     const cards = dbOps.getAllStarCards() as any[]
     return {
