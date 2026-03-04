@@ -10,20 +10,24 @@ body {
   overflow: hidden;
   height: 100vh;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 #root {
   height: 100%;
+  width: 100%;
 }
 
 .container {
   border: 4px double #555;
   padding: 20px;
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.1);
+  margin-bottom: 5px; /* Extra breathing room */
 }
 
 .header {
@@ -61,10 +65,15 @@ pre.ascii-art {
   background: rgba(255, 255, 0, 0.05);
 }
 
-.registration-form {
+.registration-form, .player-selection {
   margin: 20px 0;
   padding: 15px;
   border: 1px solid #555;
+}
+
+.player-selection .option {
+  margin: 5px 0;
+  border: none;
 }
 
 .options {

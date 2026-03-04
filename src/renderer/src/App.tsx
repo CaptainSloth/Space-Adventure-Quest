@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [vm, setVm] = useState<SceneViewModel | null>(null)
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
 
   const refreshScene = useCallback(async () => {
     console.log('Renderer: refreshScene calling get-scene')
@@ -26,6 +27,9 @@ const App: React.FC = () => {
       const newVm = await window.api.invoke('get-scene')
       console.log('Renderer: received vm:', newVm)
       setVm(newVm)
+      if (newVm.selectedPlanetId !== undefined) {
+        setSelectedPlanetId(newVm.selectedPlanetId)
+      }
     } catch (err) {
       console.error('Renderer: Error in get-scene:', err)
     } finally {
@@ -39,9 +43,23 @@ const App: React.FC = () => {
 
   const handleAction = async (key: string) => {
     setLoading(true)
-    // @ts-ignore
-    const newVm = await window.api.invoke('execute-action', key)
+    let newVm
+    
+    // Check if we are claiming a planet
+    if (vm?.title.includes('PLANET:') && key === 'C' && selectedPlanetId) {
+      // @ts-ignore
+      newVm = await window.api.invoke('claim-planet', selectedPlanetId)
+    } else {
+      // @ts-ignore
+      newVm = await window.api.invoke('execute-action', key)
+    }
+    
     setVm(newVm)
+    if (newVm.title.includes('BRIDGE')) {
+      setSelectedPlanetId(null)
+    } else if (newVm.selectedPlanetId !== undefined) {
+      setSelectedPlanetId(newVm.selectedPlanetId)
+    }
     setLoading(false)
   }
 
@@ -75,6 +93,23 @@ const App: React.FC = () => {
 
   if (!vm) return <div className="container">Loading...</div>
 
+  const handleLogin = async () => {
+    if (!name) return
+    setLoading(true)
+    // @ts-ignore
+    const newVm = await window.api.invoke('login', name)
+    setVm(newVm)
+    setLoading(false)
+  }
+
+  const handleLoginById = async (id: string) => {
+    setLoading(true)
+    // @ts-ignore
+    const newVm = await window.api.invoke('login-id', id)
+    setVm(newVm)
+    setLoading(false)
+  }
+
   return (
     <div className="container">
       <div className="header">
@@ -99,6 +134,18 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {vm.title.includes('LOGIN') && vm.playerList && vm.playerList.length > 0 && (
+        <div className="player-selection">
+          <p>Existing Pilots:</p>
+          {vm.playerList.map((p) => (
+            <div key={p.id} className="option" onClick={() => handleLoginById(p.id)}>
+              <span className="option-key">[*]</span>
+              <span className="option-label">{p.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {vm.title.includes('REGISTRATION') && (
         <div className="registration-form">
           <p>Enter your pilot name:</p>
@@ -108,6 +155,11 @@ const App: React.FC = () => {
             onChange={(e) => setName(e.target.value)} 
             autoFocus
             className="bbs-input"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (vm.title.includes('LOGIN')) handleLogin()
+              }
+            }}
           />
         </div>
       )}
@@ -117,6 +169,8 @@ const App: React.FC = () => {
           <div key={opt.key} className="option" onClick={() => {
             if (vm.title.includes('REGISTRATION')) {
               handleCreateCharacter(opt.label.split(' ')[1].toLowerCase())
+            } else if (vm.title.includes('LOGIN') && opt.key === 'S') {
+              handleLogin()
             } else {
               handleAction(opt.key)
             }
