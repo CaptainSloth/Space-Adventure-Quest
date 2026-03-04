@@ -1257,10 +1257,10 @@ content/base/
 - [x] Black Holes & Anomalies: Hazards that can damage ships or provide warp shortcuts.
 - [x] Space Stations: Player-buildable outposts in empty sectors.
 - [x] Resource Nodes: Asteroid belts and gas clouds for automated mining.
-- [ ] Advanced economy (supply/demand curves, inflation, trade route optimization)
-- [ ] Contraband/smuggling system
-- [ ] Black market locations
-- [ ] Daily news generation (auto-summary of galaxy events)
+- [x] Advanced economy (supply/demand curves, inflation, trade route optimization)
+- [x] Contraband/smuggling system
+- [x] Black market locations
+- [x] Daily news generation (auto-summary of galaxy events)
 
 ### Phase 9 — Admin Expansion
 > Full game management tools
