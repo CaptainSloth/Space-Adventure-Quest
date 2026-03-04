@@ -53,7 +53,8 @@ export const toSerializable = (
   allStarCards?: StarCard[],
   planetBuildings?: any[],
   spaceStations?: any[],
-  resourceNodes?: any[]
+  resourceNodes?: any[],
+  currentNpcs?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -63,6 +64,7 @@ export const toSerializable = (
     selectedPlanetId,
     playerList,
     onlinePlayers,
+    currentNpcs,
     chatMessages,
     globalEvents,
     rankings,
@@ -568,6 +570,7 @@ Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
     const deployments = dbOps.getSectorDeployments(state.currentSector!.id)
     const stations = state.spaceStations || []
     const nodes = state.resourceNodes || []
+    const npcs = state.currentNpcs || []
 
     return {
       title: '`%eSECTOR VIEW` %7',
@@ -579,14 +582,22 @@ Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
   \`%bRESOURCE NODES:\` %7
   ${nodes.length > 0 ? nodes.map(n => `- \`%f${n.type.toUpperCase()}\` %7 (${n.commodity.toUpperCase()}) Abundance: ${n.abundance}`).join('\n') : 'None detected.'}
 
+  \`%bSHIPS IN SECTOR:\` %7
+  ${npcs.length > 0 ? npcs.map(n => `- \`%f${n.name}\` %7 [${n.title}]`).join('\n') : 'No other ships detected.'}
+
   \`%bSECTOR ASSETS:\` %7
   ${deployments.length > 0 ? deployments.map(d => `- \`%f${d.quantity}\` %7 ${d.type}(s)`).join('\n') : 'None detected.'}`,
       options: [
         ...state.currentPlanets.map((p, i) => ({ label: `Land on ${p.name}`, key: (i + 1).toString(), action: async (s: any) => ({ ...s, selectedPlanetId: p.id, currentScene: 'planet_surface' }) })),
+        ...npcs.map((n, i) => ({ 
+          label: `Hail ${n.name}`, 
+          key: String.fromCharCode(97 + i), // a, b, c...
+          action: async (s: GameState) => ({ ...s, currentScene: 'npc_dialogue', selectedNpcId: n.id, lastMessage: `Hailing ${n.name}...` }) 
+        })),
         { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => (s.player!.credits >= 500 ? { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed.' } : { ...s, lastMessage: 'No credits!' }) },
-        ...(state.currentPlanets.length === 0 && !stations.find(ss => ss.playerId === state.player?.id) ? [{ 
-          label: 'Establish Outpost (50,000 cr)', 
-          key: 'O', 
+        ...(state.currentPlanets.length === 0 && !stations.find(ss => ss.playerId === state.player?.id) ? [{
+          label: 'Establish Outpost (50,000 cr)',
+          key: 'O',
           action: async (s: GameState) => {
             if (s.player!.credits >= 50000) return { ...s, lastMessage: `Requesting station:outpost:50000:${state.currentSector?.id}` }
             return { ...s, lastMessage: 'Insufficient credits for a space station!' }
@@ -596,7 +607,6 @@ Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
       ]
     }
   },
-
   planet_surface: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     return {
@@ -968,20 +978,22 @@ LOG: ${log.slice(-1)[0]}
     options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
   }),
   npc_dialogue: (state) => {
-    const npc = { id: 'npc_vex', name: 'Captain Vex' }
+    const npc = state.currentNpcs.find(n => n.id === state.selectedNpcId)
+    if (!npc) return { title: 'ERROR', description: 'NPC not found in sector.', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }] }
+    
     return {
-      title: `%f${npc.name.toUpperCase()} - THE SMUGGLER`,
-      description: '"Looking for a game, pilot? Or just here to talk?"',
+      title: `%f${npc.name.toUpperCase()} - ${npc.title?.toUpperCase() || 'UNKNOWN'}`,
+      description: `"${npc.description || 'What brings you here, pilot?'}"`,
       options: [
         { label: 'Challenge to Card Duel', key: 'D', action: async (s) => {
           if (s.playerDeck.filter(c => c.equipped).length < 1) {
-            return { ...s, lastMessage: 'Vex: "You need to equip some cards in your collection first!"' }
+            return { ...s, lastMessage: `${npc.name}: "You need to equip some cards in your collection first!"` }
           }
           const duel = createDuel(s.player!.name, s.playerDeck, npc.name, dbOps.getAllStarCards().slice(0, 10))
           return { ...s, currentDuel: duel, currentScene: 'card_duel' }
         }},
-        { label: 'Trade Ore', key: 'T', action: async (s) => s },
-        { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+        { label: 'Trade Resources', key: 'T', action: async (s) => ({ ...s, lastMessage: `${npc.name}: "I'm not looking for supplies right now."` }) },
+        { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge', selectedNpcId: null }) }
       ]
     }
   },

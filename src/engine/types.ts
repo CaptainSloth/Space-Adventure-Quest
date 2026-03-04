@@ -224,13 +224,32 @@ export interface CompanyMember {
   lastLoginAt: string
 }
 
+export interface Npc {
+  id: string
+  name: string
+  title?: string
+  faction?: Faction
+  personality: string // JSON
+  likes?: string // JSON
+  dislikes?: string // JSON
+  dialogueTree?: string // JSON
+  shipId?: string
+  sectorId: number
+  scheduleType: 'stationary' | 'patrol' | 'wanderer'
+  ascii?: string // JSON
+  description?: string
+  isCustom: boolean
+}
+
 export interface GameState {
   player: Player | null
   currentSector: Sector | null
   currentScene: SceneId
   lastMessage: string | null
   currentPlanets: Planet[]
+  currentNpcs: Npc[]
   selectedPlanetId: string | null
+  selectedNpcId: string | null
   combat: CombatState | null
   onlinePlayers: OnlinePlayer[]
   chatMessages: ChatMessage[]
@@ -311,6 +330,7 @@ export interface SerializableSceneViewModel {
   selectedPlanetId?: string | null
   playerList?: { id: string, name: string }[]
   onlinePlayers?: OnlinePlayer[]
+  currentNpcs?: Npc[]
   chatMessages?: ChatMessage[]
   globalEvents?: GlobalEvent[]
   rankings?: GalacticRankings | null

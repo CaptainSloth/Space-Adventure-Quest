@@ -104,6 +104,61 @@ export function initDb(): void {
     })()
   }
 
+  // Seed NPCs
+  const npcCount = db.prepare('SELECT count(*) as count FROM npcs').get().count
+  if (npcCount === 0) {
+    console.log('Seeding key NPCs into the galaxy...')
+    const initialNpcs = [
+      {
+        id: 'npc_chen',
+        name: 'Admiral Chen',
+        title: 'Alliance Commander',
+        faction: 'alliance',
+        personality: JSON.stringify({ friendliness: 80, greed: 20, aggression: 50, humor: 30 }),
+        sectorId: 1,
+        scheduleType: 'stationary',
+        description: 'A stern but honorable commander of the Alliance fleet.'
+      },
+      {
+        id: 'npc_krath',
+        name: 'Warlord Krath',
+        title: 'Empire Leader',
+        faction: 'empire',
+        personality: JSON.stringify({ friendliness: 10, greed: 90, aggression: 95, humor: 10 }),
+        sectorId: 500,
+        scheduleType: 'stationary',
+        description: 'The ruthless leader of the Krath Empire.'
+      },
+      {
+        id: 'npc_vex',
+        name: 'Captain Vex',
+        title: 'The Smuggler',
+        faction: 'neutral',
+        personality: JSON.stringify({ friendliness: 60, greed: 80, aggression: 40, humor: 85 }),
+        sectorId: 1,
+        scheduleType: 'wanderer',
+        description: 'A sly smuggler with a talent for finding trouble.'
+      },
+      {
+        id: 'npc_lyra',
+        name: 'Dr. Lyra',
+        title: 'Xeno-Biologist',
+        faction: 'neutral',
+        personality: JSON.stringify({ friendliness: 90, greed: 10, aggression: 10, humor: 70 }),
+        sectorId: 100,
+        scheduleType: 'stationary',
+        description: 'A brilliant scientist studying alien lifeforms.'
+      }
+    ]
+    const insertNpc = db.prepare(`
+      INSERT INTO npcs (id, name, title, faction, personality, sectorId, scheduleType, description, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `)
+    db.transaction(() => {
+      initialNpcs.forEach(n => insertNpc.run(n.id, n.name, n.title, n.faction, n.personality, n.sectorId, n.scheduleType, n.description))
+    })()
+  }
+
   // Ship System Migrations
   const hasTemplates = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ship_templates'").get()
   if (!hasTemplates) {

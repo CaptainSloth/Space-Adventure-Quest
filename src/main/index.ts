@@ -12,7 +12,9 @@ let currentState: GameState = {
   currentScene: 'title',
   lastMessage: null,
   currentPlanets: [],
+  currentNpcs: [],
   selectedPlanetId: null,
+  selectedNpcId: null,
   combat: null,
   onlinePlayers: [],
   chatMessages: [],
@@ -84,6 +86,7 @@ const syncAllData = () => {
     currentState.stocks = dbOps.getStocks() as any
     currentState.playerPortfolio = dbOps.getPlayerStocks(currentState.player.id) as any
     currentState.currentPlanets = dbOps.getPlanetsBySector(secId) as any
+    currentState.currentNpcs = dbOps.getNpcsInSector(secId) as any
     currentState.playerDeck = dbOps.getPlayerCards(currentState.player.id) as any
     currentState.allStarCards = dbOps.getAllStarCards() as any
     currentState.spaceStations = dbOps.getSpaceStations(secId) as any
@@ -148,7 +151,8 @@ const returnSerializedScene = () => {
     currentState.allStarCards,
     currentState.planetBuildings,
     currentState.spaceStations,
-    currentState.resourceNodes
+    currentState.resourceNodes,
+    currentState.currentNpcs
   )
 }
 
@@ -195,6 +199,10 @@ app.whenReady().then(() => {
       if (newState) {
         if (newState.currentScene !== oldScene) {
           newState.lastMessage = null
+        }
+
+        if (newState.lastMessage === 'Fighter deployed.') {
+          dbOps.deploySectorAsset(newState.player!.sectorId, newState.player!.id, 'fighter', 1)
         }
 
         // Handle CCG Equip Request
