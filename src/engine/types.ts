@@ -87,6 +87,11 @@ export interface Planet {
   createdAt: string
 }
 
+export interface CargoItem {
+  commodity: string
+  quantity: number
+}
+
 export interface CombatSide {
   id: string
   name: string
@@ -135,6 +140,8 @@ export interface Bounty {
   progress: number
   reward: number
   expiresAt: string
+  playerId?: string | null
+  companyId?: string | null
 }
 
 export interface RankingEntry {
@@ -146,6 +153,7 @@ export interface GalacticRankings {
   netWorth: RankingEntry[]
   kills: RankingEntry[]
   alignment: RankingEntry[]
+  companies: RankingEntry[]
 }
 
 export interface Company {
@@ -166,6 +174,7 @@ export interface CompanyMember {
   playerFaction: Faction
   playerLevel: number
   lastSeen: string
+  lastLoginAt: string
 }
 
 export interface GameState {
@@ -186,11 +195,22 @@ export interface GameState {
   availableCompanies: Company[]
   companyChatMessages: ChatMessage[]
   companyAlliances: any[]
+  playerCargo: CargoItem[]
 }
 
 export interface SerializableSceneOption {
   label: string
   key: string
+}
+
+export interface HudStats {
+  playerName: string
+  shipName: string
+  turns: number
+  maxTurns: number
+  credits: number
+  sectorId: number
+  alignment: number
 }
 
 export interface SerializableSceneViewModel {
@@ -211,6 +231,8 @@ export interface SerializableSceneViewModel {
   availableCompanies?: Company[]
   companyChatMessages?: ChatMessage[]
   companyAlliances?: any[]
+  playerCargo?: CargoItem[]
+  hudStats?: HudStats | null
 }
 
 export interface SceneOption extends SerializableSceneOption {

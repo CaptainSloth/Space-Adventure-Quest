@@ -1197,25 +1197,25 @@ content/base/
 ### Phase 4 — Companies & Alliances
 > Team play and social features
 
-- [ ] Company creation & management
-- [ ] Company treasury & shared assets
-- [ ] Company chat
-- [ ] Alliance pacts between Companies
-- [ ] Activity tracker (see who's played today)
-- [ ] Company rankings
-- [ ] Company missions (require multiple members)
-- [ ] Faction HQ scenes (Alliance/Empire home bases)
+- [x] Company creation & management
+- [x] Company treasury & shared assets
+- [x] Company chat
+- [x] Alliance pacts between Companies
+- [x] Activity tracker (see who's played today)
+- [x] Company rankings
+- [x] Company missions (require multiple members)
+- [x] Faction HQ scenes (Alliance/Empire home bases)
 
 ### Phase 5 — Smart NPCs
 > NPCs that feel alive
 
-- [ ] NPC memory system (per-player sentiment tracking)
-- [ ] Dynamic NPC dialogue (references past encounters)
-- [ ] NPC schedules (patrol, wander, stationary)
-- [ ] NPC traders with personality-based pricing
-- [ ] NPC quest givers
-- [ ] NPC combat opponents with varied AI
-- [ ] Admin NPC editor
+- [x] NPC memory system (per-player sentiment tracking)
+- [x] Dynamic NPC dialogue (references past encounters)
+- [x] NPC schedules (patrol, wander, stationary)
+- [x] NPC traders with personality-based pricing
+- [x] NPC quest givers
+- [x] NPC combat opponents with varied AI
+- [x] Admin NPC editor
 
 ### Phase 6 — Ship Expansion
 > Thousands of ships

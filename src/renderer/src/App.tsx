@@ -22,6 +22,8 @@ interface SceneViewModel {
   availableCompanies?: any[]
   companyChatMessages?: any[]
   companyAlliances?: any[]
+  playerCargo?: any[]
+  hudStats?: any | null
 }
 
 interface Notification {
@@ -62,7 +64,7 @@ const App: React.FC = () => {
     refreshScene()
   }, [refreshScene])
 
-  // Polling loop for Phase 3/4 multiplayer
+  // Polling loop
   useEffect(() => {
     if (!vm) return
     const isGameScene = !['SPACE ADVENTURE QUEST', 'CHARACTER LOGIN', 'CHARACTER REGISTRATION'].some(t => vm.title.includes(t))
@@ -78,15 +80,11 @@ const App: React.FC = () => {
           const newEvents = newVm.globalEvents.filter((e: any) => e.id > lastEventId.current)
           if (newEvents.length > 0) {
             lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
-            
             const newToasts = newEvents.map((e: any) => ({ id: e.id, payload: e.payload }))
             setNotifications(prev => {
-              // Ensure we don't add duplicates that might have sneaked in
               const uniqueNew = newToasts.filter(nt => !prev.some(p => p.id === nt.id))
               return [...prev, ...uniqueNew]
             })
-            
-            // Clear each new toast after 5 seconds
             newToasts.forEach((t: any) => {
               setTimeout(() => {
                 setNotifications(prev => prev.filter(note => note.id !== t.id))
@@ -115,6 +113,45 @@ const App: React.FC = () => {
     if (vm?.title.includes('PLANET:') && key === 'C' && selectedPlanetId) {
       // @ts-ignore
       newVm = await window.api.invoke('claim-planet', selectedPlanetId)
+    } else if (vm?.title.includes('PORT') && /^[o|f|e|r|u|q]$/.test(key.toLowerCase())) {
+       // Reliable Metadata Parsing: [DATA:name:buy:sell]
+       // Fixed regex to support negative numbers and N/A
+       const metadataRegex = /\[DATA:(\w+):(-?\d+|N\/A):(-?\d+|N\/A)\]/g
+       const buyMap: Record<string, string> = { 'o': 'ore', 'f': 'fuel', 'e': 'equipment' }
+       const sellMap: Record<string, string> = { 'r': 'ore', 'u': 'fuel', 'q': 'equipment' }
+       
+       const char = key.toLowerCase()
+       const isBuy = !!buyMap[char]
+       const commodityName = isBuy ? buyMap[char] : sellMap[char]
+       
+       let price = 0
+       let match
+       // We need to reset the regex lastIndex because of the 'g' flag
+       metadataRegex.lastIndex = 0
+       while ((match = metadataRegex.exec(vm.description)) !== null) {
+         if (match[1] === commodityName) {
+           price = isBuy ? parseInt(match[3]) : parseInt(match[2])
+           break
+         }
+       }
+
+       if (price > 0) {
+         try {
+           // @ts-ignore
+           newVm = await window.api.invoke('trade-commodity', commodityName, isBuy ? 1 : -1, price)
+         } catch (e) {
+           console.error('Trade error:', e)
+           // @ts-ignore
+           newVm = await window.api.invoke('get-scene')
+         }
+       } else {
+         // @ts-ignore
+         newVm = await window.api.invoke('execute-action', key)
+       }
+    } else if (vm?.title.includes('VEX') && key.toLowerCase() === 't') {
+       // Vex Trading (Greedy constant for now)
+       // @ts-ignore
+       newVm = await window.api.invoke('trade-commodity', 'ore', -1, 30) 
     } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
       const company = vm.availableCompanies?.[parseInt(key) - 1]
       if (company) {
@@ -196,6 +233,8 @@ const App: React.FC = () => {
 
   if (!vm) return <div className="container">Loading...</div>
 
+  const isGameScene = !['SPACE ADVENTURE QUEST', 'CHARACTER LOGIN', 'CHARACTER REGISTRATION'].some(t => vm.title.includes(t))
+
   const handleLogin = async () => {
     if (!name) return
     setLoading(true)
@@ -231,90 +270,112 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {isGameScene && vm.hudStats && (
+        <div className="hud">
+          <div className="hud-stats">
+            <div>PILOT: <span className="sansi-f">{vm.hudStats.playerName}</span></div>
+            <div>TURNS: <span className="sansi-b">{vm.hudStats.turns}</span> / {vm.hudStats.maxTurns}</div>
+            <div>CREDITS: <span className="sansi-e">{vm.hudStats.credits}</span></div>
+          </div>
+          <div className="hud-inventory">
+            <div>SHIP: <span className="sansi-d">{vm.hudStats.shipName}</span></div>
+            <div>CARGO: 
+              <span className="cargo-list">
+                {vm.playerCargo && vm.playerCargo.length > 0 
+                  ? vm.playerCargo.slice(0, 3).map(c => ` ${c.commodity.toUpperCase()}(${c.quantity})`)
+                  : ' EMPTY'}
+              </span>
+            </div>
+          </div>
+          <div className="hud-presence">
+            <div>SECTOR: <span className="sansi-f">{vm.hudStats.sectorId}</span></div>
+            <div>SCANNER: <span className="sansi-a">{vm.onlinePlayers?.length || 0} Online</span></div>
+          </div>
+        </div>
+      )}
+
       <div className="header">
         <h1>{parseSansi(vm.title)}</h1>
       </div>
 
-      {vm.ascii && (
-        <pre className="ascii-art">
-          {vm.ascii.map((line, i) => (
-            <div key={i}>{parseSansi(line)}</div>
-          ))}
-        </pre>
-      )}
+      <div className="main-content">
+        {vm.ascii && (
+          <pre className="ascii-art">
+            {vm.ascii.map((line, i) => (
+              <div key={i}>{parseSansi(line)}</div>
+            ))}
+          </pre>
+        )}
 
-      <div className="description">
-        {parseSansi(vm.description)}
-      </div>
+        <div className="description">
+          {parseSansi(vm.description)}
+        </div>
 
-      {(vm.title.includes('COMM LINK') || vm.title.includes('COMPANY CHAT')) && (
-        <div className="chat-interface">
-          <div className="chat-messages">
-            {(vm.title.includes('COMM LINK') ? vm.chatMessages : vm.companyChatMessages)?.map((msg: any) => (
-              <div key={msg.id} className="chat-message">
-                <span className="chat-time">[{new Date(msg.createdAt).toLocaleTimeString()}]</span>
-                <span className="chat-author"> {msg.playerName}:</span>
-                <span className="chat-text"> {msg.message}</span>
+        {(vm.title.includes('COMM LINK') || vm.title.includes('COMPANY CHAT')) && (
+          <div className="chat-interface">
+            <div className="chat-messages">
+              {(vm.title.includes('COMM LINK') ? vm.chatMessages : vm.companyChatMessages)?.map((msg: any) => (
+                <div key={msg.id} className="chat-message">
+                  <span className="chat-time">[{new Date(msg.createdAt).toLocaleTimeString()}]</span>
+                  <span className="chat-author"> {msg.playerName}:</span>
+                  <span className="chat-text"> {msg.message}</span>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="chat-input-row">
+              <span>&gt; </span>
+              <input 
+                type="text" 
+                value={chatInput} 
+                onChange={(e) => setChatInput(e.target.value)} 
+                autoFocus
+                className="bbs-input chat-input"
+                placeholder={vm.title.includes('COMM LINK') ? "Broadcast to sector..." : "Message company..."}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSendMessage()
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {vm.lastMessage && (
+          <div className="message-box">
+            {parseSansi(vm.lastMessage)}
+          </div>
+        )}
+
+        {vm.title.includes('LOGIN') && vm.playerList && vm.playerList.length > 0 && (
+          <div className="player-selection">
+            <p>Existing Pilots:</p>
+            {vm.playerList.map((p) => (
+              <div key={p.id} className="option" onClick={() => handleLoginById(p.id)}>
+                <span className="option-key">[*]</span>
+                <span className="option-label">{p.name}</span>
               </div>
             ))}
-            <div ref={chatEndRef} />
           </div>
-          <div className="chat-input-row">
-            <span>&gt; </span>
+        )}
+
+        {(vm.title.includes('REGISTRATION') || vm.title.includes('FOUND NEW COMPANY')) && (
+          <div className="registration-form">
+            <p>Enter Name:</p>
             <input 
               type="text" 
-              value={chatInput} 
-              onChange={(e) => setChatInput(e.target.value)} 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
               autoFocus
-              className="bbs-input chat-input"
-              placeholder={vm.title.includes('COMM LINK') ? "Broadcast to sector..." : "Message company..."}
+              className="bbs-input"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSendMessage()
+                if (e.key === 'Enter') {
+                  if (vm.title.includes('FOUND NEW COMPANY')) handleCreateCompany()
+                }
               }}
             />
           </div>
-        </div>
-      )}
-
-      {vm.lastMessage && (
-        <div className="message-box">
-          {parseSansi(vm.lastMessage)}
-        </div>
-      )}
-
-      {vm.title.includes('LOGIN') && vm.playerList && vm.playerList.length > 0 && (
-        <div className="player-selection">
-          <p>Existing Pilots:</p>
-          {vm.playerList.map((p) => (
-            <div key={p.id} className="option" onClick={() => handleLoginById(p.id)}>
-              <span className="option-key">[*]</span>
-              <span className="option-label">{p.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {(vm.title.includes('REGISTRATION') || vm.title.includes('FOUND NEW COMPANY')) && (
-        <div className="registration-form">
-          <p>Enter Name:</p>
-          <input 
-            type="text" 
-            value={name} 
-            onChange={(e) => setName(e.target.value)} 
-            autoFocus
-            className="bbs-input"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                if (vm.title.includes('REGISTRATION')) {
-                   //
-                } else if (vm.title.includes('FOUND NEW COMPANY')) {
-                   handleCreateCompany()
-                }
-              }
-            }}
-          />
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="options">
         {vm.options.map((opt) => (

@@ -92,7 +92,8 @@ export function initDb(): void {
     db.exec(`
       CREATE TABLE bounties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        playerId TEXT NOT NULL,
+        playerId TEXT,
+        companyId TEXT,
         type TEXT NOT NULL,
         target TEXT,
         required INTEGER NOT NULL,
@@ -102,6 +103,13 @@ export function initDb(): void {
         expiresAt TEXT NOT NULL
       )
     `)
+  } else {
+    // Check if companyId column exists
+    const bountyCols = db.prepare("PRAGMA table_info(bounties)").all() as any[]
+    if (!bountyCols.some(col => col.name === 'companyId')) {
+      console.log('Migrating: Adding companyId to bounties...')
+      db.prepare("ALTER TABLE bounties ADD COLUMN companyId TEXT").run()
+    }
   }
 
   // Check for planet_reports table
@@ -116,6 +124,13 @@ export function initDb(): void {
         createdAt TEXT NOT NULL
       )
     `)
+  }
+
+  // Check for lastLoginAt column
+  const playerCols = db.prepare("PRAGMA table_info(players)").all() as any[]
+  if (!playerCols.some(col => col.name === 'lastLoginAt')) {
+    console.log('Migrating: Adding lastLoginAt to players...')
+    db.prepare("ALTER TABLE players ADD COLUMN lastLoginAt TEXT").run()
   }
 
   // Check for companies tables
@@ -212,6 +227,19 @@ export const dbOps = {
   updatePlayerCredits: (playerId: string, amount: number) => {
     return db.prepare('UPDATE players SET credits = credits + ? WHERE id = ?').run(amount, playerId)
   },
+  getPlayerCargo: (playerId: string) => {
+    return db.prepare('SELECT commodity, quantity FROM player_cargo WHERE playerId = ? AND quantity > 0').all(playerId)
+  },
+  updatePlayerCargo: (playerId: string, commodity: string, quantity: number) => {
+    return db.prepare(`
+      INSERT INTO player_cargo (playerId, commodity, quantity)
+      VALUES (?, ?, ?)
+      ON CONFLICT(playerId, commodity) DO UPDATE SET quantity = quantity + EXCLUDED.quantity
+    `).run(playerId, commodity, quantity)
+  },
+  updatePlayerShip: (playerId: string, shipId: string) => {
+    return db.prepare('UPDATE players SET shipId = ? WHERE id = ?').run(shipId, playerId)
+  },
   resetAllNpcCooldowns: () => {
     return db.prepare("DELETE FROM world_settings WHERE key LIKE 'cooldown_npc_%'").run()
   },
@@ -224,8 +252,10 @@ export const dbOps = {
   updatePlayerHeartbeat: (playerId: string) => {
     return db.prepare("UPDATE players SET lastSeen = datetime('now') WHERE id = ?").run(playerId)
   },
+  updatePlayerLastLogin: (playerId: string) => {
+    return db.prepare("UPDATE players SET lastLoginAt = datetime('now') WHERE id = ?").run(playerId)
+  },
   getOnlinePlayersInSector: (sectorId: number, excludePlayerId: string) => {
-    // Online in the last 2 minutes (120 seconds)
     return db.prepare(`
       SELECT id, name, faction, alignment, shipId, level 
       FROM players 
@@ -252,7 +282,7 @@ export const dbOps = {
     return db.prepare(`
       INSERT INTO sector_messages (sectorId, playerId, message, createdAt) 
       VALUES (-1, ?, ?, datetime('now'))
-    `).run(playerId, message) // Using sectorId -1 for company chat
+    `).run(playerId, message)
   },
   getCompanyMessages: (companyId: string, limit: number = 10) => {
     return db.prepare(`
@@ -285,35 +315,41 @@ export const dbOps = {
       LIMIT ?
     `).all(limit)
   },
-  getPlayerBounties: (playerId: string) => {
+  getPlayerBounties: (playerId: string, companyId?: string | null) => {
+    if (companyId) {
+      return db.prepare('SELECT * FROM bounties WHERE (playerId = ? OR companyId = ?) AND completed = 0').all(playerId, companyId)
+    }
     return db.prepare('SELECT * FROM bounties WHERE playerId = ? AND completed = 0').all(playerId)
   },
   createBounty: (bounty: any) => {
     const stmt = db.prepare(`
-      INSERT INTO bounties (playerId, type, target, required, reward, expiresAt)
-      VALUES (@playerId, @type, @target, @required, @reward, @expiresAt)
+      INSERT INTO bounties (playerId, companyId, type, target, required, reward, expiresAt)
+      VALUES (@playerId, @companyId, @type, @target, @required, @reward, @expiresAt)
     `)
     return stmt.run(bounty)
   },
-  updateBountyProgress: (playerId: string, type: string, target: string) => {
-    // Increment progress for matching bounties
+  updateBountyProgress: (playerId: string, type: string, target: string, companyId?: string | null) => {
     db.prepare(`
       UPDATE bounties 
       SET progress = progress + 1 
-      WHERE playerId = ? AND type = ? AND target = ? AND completed = 0
-    `).run(playerId, type, target)
+      WHERE (playerId = ? OR (companyId = ? AND companyId IS NOT NULL)) 
+      AND type = ? AND target = ? AND completed = 0
+    `).run(playerId, companyId, type, target)
 
-    // Mark as completed if requirement met
     const completed = db.prepare(`
-      SELECT id, reward FROM bounties 
-      WHERE playerId = ? AND type = ? AND target = ? AND progress >= required AND completed = 0
-    `).all(playerId, type, target) as any[]
+      SELECT id, reward, companyId FROM bounties 
+      WHERE (playerId = ? OR (companyId = ? AND companyId IS NOT NULL))
+      AND type = ? AND target = ? AND progress >= required AND completed = 0
+    `).all(playerId, companyId, type, target) as any[]
 
     for (const b of completed) {
       db.prepare('UPDATE bounties SET completed = 1 WHERE id = ?').run(b.id)
-      db.prepare('UPDATE players SET credits = credits + ? WHERE id = ?').run(b.reward, playerId)
+      if (b.companyId) {
+        dbOps.updateCompanyTreasury(b.companyId, b.reward)
+      } else {
+        dbOps.updatePlayerCredits(playerId, b.reward)
+      }
     }
-    
     return completed.length > 0
   },
   getRankings: () => {
@@ -325,7 +361,8 @@ export const dbOps = {
         LIMIT 10
       `).all(),
       kills: db.prepare('SELECT name, kills as value FROM players ORDER BY kills DESC LIMIT 10').all(),
-      alignment: db.prepare('SELECT name, alignment as value FROM players ORDER BY ABS(alignment) DESC LIMIT 10').all()
+      alignment: db.prepare('SELECT name, alignment as value FROM players ORDER BY ABS(alignment) DESC LIMIT 10').all(),
+      companies: db.prepare('SELECT name, treasury as value FROM companies ORDER BY treasury DESC LIMIT 10').all()
     }
   },
   deploySectorAsset: (sectorId: number, playerId: string, type: string, quantity: number) => {
@@ -345,12 +382,33 @@ export const dbOps = {
   removeSectorDeployment: (id: number) => {
     return db.prepare('DELETE FROM sector_deployments WHERE id = ?').run(id)
   },
+  getNpc: (id: string) => {
+    return db.prepare('SELECT * FROM npcs WHERE id = ?').get(id)
+  },
+  getNpcsInSector: (sectorId: number) => {
+    return db.prepare('SELECT * FROM npcs WHERE sectorId = ?').all(sectorId)
+  },
+  updateNpcSector: (npcId: string, sectorId: number) => {
+    return db.prepare('UPDATE npcs SET sectorId = ? WHERE id = ?').run(sectorId, npcId)
+  },
+  updateNpcStats: (npcId: string, personality: string) => {
+    return db.prepare('UPDATE npcs SET personality = ? WHERE id = ?').run(personality, npcId)
+  },
+  addNpcMemory: (npcId: string, playerId: string, type: string, sentiment: number, details: string) => {
+    return db.prepare(`
+      INSERT INTO npc_memories (npcId, playerId, encounterType, sentiment, details, createdAt)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `).run(npcId, playerId, type, sentiment, details)
+  },
+  getNpcMemories: (npcId: string, playerId: string) => {
+    return db.prepare('SELECT * FROM npc_memories WHERE npcId = ? AND playerId = ? ORDER BY id DESC').all(npcId, playerId)
+  },
   getCompany: (id: string) => {
     return db.prepare('SELECT * FROM companies WHERE id = ?').get(id)
   },
   getCompanyMembers: (companyId: string) => {
     return db.prepare(`
-      SELECT cm.*, p.name as playerName, p.faction as playerFaction, p.level as playerLevel, p.lastSeen
+      SELECT cm.*, p.name as playerName, p.faction as playerFaction, p.level as playerLevel, p.lastSeen, p.lastLoginAt
       FROM company_members cm
       LEFT JOIN players p ON cm.playerId = p.id
       WHERE cm.companyId = ?

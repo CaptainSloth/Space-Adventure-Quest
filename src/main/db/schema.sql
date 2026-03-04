@@ -155,7 +155,8 @@ CREATE TABLE IF NOT EXISTS sector_messages (
 -- Bounties
 CREATE TABLE IF NOT EXISTS bounties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  playerId TEXT NOT NULL,
+  playerId TEXT,                      -- NULL if company bounty
+  companyId TEXT,                     -- NULL if player bounty
   type TEXT NOT NULL,                 -- 'kill', 'trade', 'explore'
   target TEXT,                        -- npcId or commodity
   required INTEGER NOT NULL,
@@ -164,6 +165,9 @@ CREATE TABLE IF NOT EXISTS bounties (
   completed BOOLEAN DEFAULT FALSE,
   expiresAt TEXT NOT NULL
 );
+
+-- Players update: add lastLoginAt
+-- (I will handle this via migration in DB index.ts)
 
 -- Planet Daily Reports
 CREATE TABLE IF NOT EXISTS planet_reports (

@@ -3,21 +3,17 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  // Add game-specific IPC methods here
-  send: (channel: string, data: any) => {
-    ipcRenderer.send(channel, data)
+  send: (channel: string, ...args: any[]) => {
+    ipcRenderer.send(channel, ...args)
   },
-  invoke: (channel: string, data: any) => {
-    return ipcRenderer.invoke(channel, data)
+  invoke: (channel: string, ...args: any[]) => {
+    return ipcRenderer.invoke(channel, ...args)
   },
   receive: (channel: string, func: (...args: any[]) => void) => {
     ipcRenderer.on(channel, (event, ...args) => func(...args))
   }
 }
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
