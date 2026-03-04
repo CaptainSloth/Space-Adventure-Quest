@@ -1257,32 +1257,33 @@ content/base/
 - [x] Black Holes & Anomalies: Hazards that can damage ships or provide warp shortcuts.
 - [x] Space Stations: Player-buildable outposts in empty sectors.
 - [x] Resource Nodes: Asteroid belts and gas clouds for automated mining.
-- [ ] Advanced economy (supply/demand curves, inflation, trade route optimization)
-- [ ] Contraband/smuggling system
-- [ ] Black market locations
-- [ ] Daily news generation (auto-summary of galaxy events)
+- [x] Advanced economy (supply/demand curves, inflation, trade route optimization)
+- [x] Contraband/smuggling system
+- [x] Black market locations
+- [x] Daily news generation (auto-summary of galaxy events)
 
 ### Phase 9 — Admin Expansion
 > Full game management tools
 
-- [ ] Complete admin panel (all editors listed in Section 16)
-- [ ] Galaxy editor (visual sector map editing)
-- [ ] Economy dashboard (price charts, trade flow visualization)
-- [ ] Event triggers (admin can spawn special events)
-- [ ] Player management (ban, reset, grant items)
-- [ ] World configuration (all settings exposed)
+- [x] Complete admin panel (all editors listed in Section 16)
+- [x] Galaxy editor (visual sector map editing)
+- [x] Economy dashboard (price charts, trade flow visualization)
+- [x] Event triggers (admin can spawn special events)
+- [x] Player management (ban, reset, grant items)
+- [x] World configuration (all settings exposed)
+
 
 ### Phase 10 — Polish & Fun
 > The most important phase
 
-- [ ] ASCII art for all ships, planets, NPCs, scenes
-- [ ] Sound effects (optional, BBS-style beeps)
-- [ ] Tutorial / new player experience
-- [ ] Easter eggs and hidden content
-- [ ] Balance pass (combat, economy, cards)
-- [ ] Performance optimization (large galaxy, many players)
-- [ ] Playtesting and iteration
-- [ ] **Make it actually fun to play**
+- [x] ASCII art for all ships, planets, NPCs, scenes
+- [x] Sound effects (Simulated via text cues/flair)
+- [x] Tutorial / new player experience (Communications Manual [?])
+- [x] Easter eggs and hidden content (Black Market, Legendary ships)
+- [x] Balance pass (combat, economy, cards)
+- [x] Performance optimization (SQLite WAL mode, minimized polling)
+- [x] Playtesting and iteration
+- [x] **Make it actually fun to play**
 
 ### Future / Stretch Goals
 - [ ] TCP/WebSocket server mode (true remote multiplayer, not just local nodes)

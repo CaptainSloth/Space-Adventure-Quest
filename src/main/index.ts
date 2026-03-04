@@ -79,6 +79,13 @@ const getHudStats = (): HudStats | null => {
 const syncAllData = () => {
   if (currentState.player) {
     const secId = currentState.player.sectorId
+    const sectorData = dbOps.getSector(secId)
+    if (sectorData) {
+      currentState.currentSector = {
+        ...sectorData,
+        warps: JSON.parse(sectorData.warps)
+      }
+    }
     currentState.bounties = dbOps.getPlayerBounties(currentState.player.id, currentState.player.companyId) as any
     currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
     currentState.stocks = dbOps.getStocks() as any
@@ -88,6 +95,7 @@ const syncAllData = () => {
     currentState.allStarCards = dbOps.getAllStarCards() as any
     currentState.spaceStations = dbOps.getSpaceStations(secId) as any
     currentState.resourceNodes = dbOps.getResourceNodes(secId) as any
+    currentState.currentNpcs = dbOps.getNpcsInSector(secId) as any
     
     if (currentState.selectedPlanetId) {
       currentState.planetBuildings = dbOps.getPlanetBuildings(currentState.selectedPlanetId) as any
@@ -166,6 +174,19 @@ app.whenReady().then(() => {
     dbOps.growAllPlanets()
     dbOps.processAutomatedMining()
     dbOps.processEconomyRecovery()
+    
+    // NPC Dynamic Life
+    if (Math.random() < 0.3) {
+      const npcEvents = [
+        'Captain Vex was spotted outrunning an Alliance patrol in Sector 42.',
+        'Smugglers report a heavy Nebula storm in the Outer Rim.',
+        'A rogue freighter has been scavenged near the Asteroid Belts.',
+        'Deep space sensors detected a mysterious shimmering hull near Sector 450.',
+        'Local cantinas report a surge in high-stakes card dueling.'
+      ]
+      dbOps.insertGlobalEvent('NPC_LIFE', npcEvents[Math.floor(Math.random() * npcEvents.length)])
+    }
+
     dbOps.insertGlobalEvent('ECONOMY_TICK', 'A new galactic day has begun. Planetary populations have grown, taxes collected, and port stocks have begun to recover.')
   }, 600000)
 
@@ -664,6 +685,14 @@ app.whenReady().then(() => {
       dbOps.updatePlanetPort(planetId, true, JSON.stringify(prices))
       currentState.lastMessage = 'Port prices updated.'
     }
+    return returnSerializedScene()
+  })
+
+  ipcMain.handle('update-setting', async (event, key: string, value: string) => {
+    if (!currentState.player) return
+    const db = getDb()
+    db.prepare('INSERT OR REPLACE INTO world_settings (key, value) VALUES (?, ?)').run(key, value)
+    currentState.lastMessage = `Setting [${key}] updated to: ${value}`
     return returnSerializedScene()
   })
 

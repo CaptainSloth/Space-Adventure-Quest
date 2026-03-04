@@ -190,6 +190,11 @@ const App: React.FC = () => {
        setVm({ ...vm, title: 'SHIP RENAMING' })
        setLoading(false)
        return
+    } else if (vm?.title.includes('EDIT SETTING') && key === 'S') {
+       // Manual toggle for input UI - change title to trigger showInputForm
+       setVm({ ...vm, title: 'ADMIN: UPDATING SETTING' })
+       setLoading(false)
+       return
     } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
       const company = vm.availableCompanies?.[parseInt(key) - 1]
       if (company) {
@@ -234,6 +239,16 @@ const App: React.FC = () => {
     const type = vm?.title.includes('DESCRIPTION') ? 'description' : 'ascii'
     // @ts-ignore
     const newVm = await window.api.invoke('set-planet-customs', selectedPlanetId, type, name)
+    setVm(newVm)
+    setName('')
+    setLoading(false)
+  }
+
+  const handleUpdateSetting = async () => {
+    if (!name || !selectedPlanetId) return
+    setLoading(true)
+    // @ts-ignore
+    const newVm = await window.api.invoke('update-setting', selectedPlanetId, name)
     setVm(newVm)
     setName('')
     setLoading(false)
@@ -316,6 +331,7 @@ const App: React.FC = () => {
   const showInputForm = vm.title.includes('REGISTRATION') || 
                        vm.title.includes('FOUND NEW COMPANY') || 
                        vm.title.includes('SHIP RENAMING') ||
+                       vm.title.includes('UPDATING SETTING') ||
                        vm.title.includes('PLANET DESCRIPTION') ||
                        vm.title.includes('PLANET ASCII ART')
 

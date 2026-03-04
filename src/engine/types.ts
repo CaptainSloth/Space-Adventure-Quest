@@ -252,6 +252,7 @@ export interface GameState {
   planetBuildings: PlanetBuilding[]
   spaceStations: SpaceStation[]
   resourceNodes: ResourceNode[]
+  currentNpcs: any[]
   adminBuilder?: {
     templateId?: string
     prefixId?: number
@@ -330,6 +331,7 @@ export interface SerializableSceneViewModel {
   planetBuildings?: PlanetBuilding[]
   spaceStations?: SpaceStation[]
   resourceNodes?: ResourceNode[]
+  currentNpcs?: any[]
   currentDuel?: DuelState | null
 }
 

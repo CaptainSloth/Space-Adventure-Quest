@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS ship_templates (
   baseCost INTEGER DEFAULT 500,
   description TEXT,
   tier INTEGER DEFAULT 1,
+  ascii TEXT,                        -- JSON string[]
   isCustom BOOLEAN DEFAULT FALSE
 );
 
