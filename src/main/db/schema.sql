@@ -173,6 +173,33 @@ CREATE TABLE IF NOT EXISTS planet_reports (
   createdAt TEXT NOT NULL
 );
 
+-- Companies
+CREATE TABLE IF NOT EXISTS companies (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  ceoPlayerId TEXT NOT NULL,
+  faction TEXT,                    -- 'alliance', 'empire', 'neutral', or NULL (mixed)
+  treasury INTEGER DEFAULT 0,
+  createdAt TEXT NOT NULL
+);
+
+-- Company Members
+CREATE TABLE IF NOT EXISTS company_members (
+  companyId TEXT NOT NULL,
+  playerId TEXT NOT NULL,
+  role TEXT DEFAULT 'member',      -- 'ceo', 'officer', 'member'
+  joinedAt TEXT NOT NULL,
+  PRIMARY KEY (companyId, playerId)
+);
+
+-- Company Alliances
+CREATE TABLE IF NOT EXISTS company_alliances (
+  companyA TEXT NOT NULL,
+  companyB TEXT NOT NULL,
+  formedAt TEXT NOT NULL,
+  PRIMARY KEY (companyA, companyB)
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

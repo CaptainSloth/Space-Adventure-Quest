@@ -117,6 +117,35 @@ export function initDb(): void {
       )
     `)
   }
+
+  // Check for companies tables
+  const hasCompanies = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='companies'").get()
+  if (!hasCompanies) {
+    console.log('Migrating: Adding company tables...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS companies (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        ceoPlayerId TEXT NOT NULL,
+        faction TEXT,
+        treasury INTEGER DEFAULT 0,
+        createdAt TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS company_members (
+        companyId TEXT NOT NULL,
+        playerId TEXT NOT NULL,
+        role TEXT DEFAULT 'member',
+        joinedAt TEXT NOT NULL,
+        PRIMARY KEY (companyId, playerId)
+      );
+      CREATE TABLE IF NOT EXISTS company_alliances (
+        companyA TEXT NOT NULL,
+        companyB TEXT NOT NULL,
+        formedAt TEXT NOT NULL,
+        PRIMARY KEY (companyA, companyB)
+      );
+    `)
+  }
 }
 
 export function getDb(): Database.Database {
@@ -219,6 +248,28 @@ export const dbOps = {
       LIMIT ?
     `).all(sectorId, limit).reverse()
   },
+  insertCompanyMessage: (companyId: string, playerId: string, message: string) => {
+    return db.prepare(`
+      INSERT INTO sector_messages (sectorId, playerId, message, createdAt) 
+      VALUES (-1, ?, ?, datetime('now'))
+    `).run(playerId, message) // Using sectorId -1 for company chat
+  },
+  getCompanyMessages: (companyId: string, limit: number = 10) => {
+    return db.prepare(`
+      SELECT sm.id, sm.message, sm.createdAt, p.name as playerName
+      FROM sector_messages sm
+      LEFT JOIN players p ON sm.playerId = p.id
+      WHERE sm.sectorId = -1 AND p.companyId = ?
+      ORDER BY sm.id DESC
+      LIMIT ?
+    `).all(companyId, limit).reverse()
+  },
+  createAlliance: (idA: string, idB: string) => {
+    return db.prepare('INSERT INTO company_alliances (companyA, companyB, formedAt) VALUES (?, ?, datetime("now"))').run(idA, idB)
+  },
+  getAlliances: (companyId: string) => {
+    return db.prepare('SELECT * FROM company_alliances WHERE companyA = ? OR companyB = ?').all(companyId, companyId)
+  },
   insertGlobalEvent: (type: string, payload: string) => {
     return db.prepare(`
       INSERT INTO events (targetPlayerId, type, payload, createdAt)
@@ -293,5 +344,44 @@ export const dbOps = {
   },
   removeSectorDeployment: (id: number) => {
     return db.prepare('DELETE FROM sector_deployments WHERE id = ?').run(id)
+  },
+  getCompany: (id: string) => {
+    return db.prepare('SELECT * FROM companies WHERE id = ?').get(id)
+  },
+  getCompanyMembers: (companyId: string) => {
+    return db.prepare(`
+      SELECT cm.*, p.name as playerName, p.faction as playerFaction, p.level as playerLevel, p.lastSeen
+      FROM company_members cm
+      LEFT JOIN players p ON cm.playerId = p.id
+      WHERE cm.companyId = ?
+    `).all(companyId)
+  },
+  createCompany: (company: any) => {
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO companies (id, name, ceoPlayerId, faction, createdAt)
+        VALUES (@id, @name, @ceoPlayerId, @faction, @createdAt)
+      `).run(company)
+      db.prepare(`
+        INSERT INTO company_members (companyId, playerId, role, joinedAt)
+        VALUES (?, ?, 'ceo', ?)
+      `).run(company.id, company.ceoPlayerId, company.createdAt)
+      db.prepare('UPDATE players SET companyId = ? WHERE id = ?').run(company.id, company.ceoPlayerId)
+    })()
+  },
+  updateCompanyTreasury: (companyId: string, amount: number) => {
+    return db.prepare('UPDATE companies SET treasury = treasury + ? WHERE id = ?').run(amount, companyId)
+  },
+  addCompanyMember: (companyId: string, playerId: string) => {
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO company_members (companyId, playerId, role, joinedAt)
+        VALUES (?, ?, 'member', datetime('now'))
+      `).run(companyId, playerId)
+      db.prepare('UPDATE players SET companyId = ? WHERE id = ?').run(companyId, playerId)
+    })()
+  },
+  getAvailableCompanies: () => {
+    return db.prepare('SELECT * FROM companies').all()
   }
 }
