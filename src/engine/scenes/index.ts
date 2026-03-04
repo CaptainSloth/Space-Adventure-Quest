@@ -498,6 +498,73 @@ Use keys 1-9 to toggle equipment.`,
     }
   },
 
+  card_duel: (state) => {
+    if (!state.currentDuel) {
+      return {
+        title: 'ERROR',
+        description: 'Duel state lost.',
+        options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
+      }
+    }
+
+    const { player, opponent, round, turn, log, winner } = state.currentDuel
+
+    const renderRow = (side: any, rowName: string) => {
+      const row = side[rowName]
+      return `[${rowName.toUpperCase().padEnd(8)}] ${row.cards.map((c: any) => `[${c.power}]`).join(' ')} (${row.score})`
+    }
+
+    const board = `
+ROUND ${round} | TURN: ${turn.toUpperCase()}
+----------------------------------------------------
+${opponent.name} (Lives: ${opponent.lives}) [PASS: ${opponent.hasPassed}]
+${renderRow(opponent, 'support')}
+${renderRow(opponent, 'fleet')}
+${renderRow(opponent, 'vanguard')}
+SCORE: \`%1${opponent.score}\` %7
+
+VS
+
+SCORE: \`%a${player.score}\` %7
+${renderRow(player, 'vanguard')}
+${renderRow(player, 'fleet')}
+${renderRow(player, 'support')}
+${player.name} (Lives: ${player.lives}) [PASS: ${player.hasPassed}]
+----------------------------------------------------
+LOG: ${log.slice(-1)[0]}
+`
+
+    if (winner) {
+      return {
+        title: '`%bDUEL CONCLUDED` %7',
+        description: board + `\n\n\`%f${winner === 'player' ? 'VICTORY!' : 'DEFEAT!'}\` %7`,
+        options: [{ label: 'Return to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge', currentDuel: null }) }]
+      }
+    }
+
+    return {
+      title: '`%bSTAR CARD DUEL` %7',
+      description: board + `\nYOUR HAND:`,
+      options: [
+        ...player.hand.map((c, i) => ({
+          label: `${c.name} (Pwr: ${c.power})`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            if (turn !== 'player' || player.hasPassed) return s
+            const row = c.preferredRow === 'any' ? 'fleet' : c.preferredRow as any
+            const newDuel = playCard({ ...s.currentDuel! }, 'player', i, row)
+            return { ...s, currentDuel: newDuel }
+          }
+        })),
+        { label: 'Pass Round', key: 'P', action: async (s) => {
+          if (turn !== 'player' || player.hasPassed) return s
+          const newDuel = passRound({ ...s.currentDuel! }, 'player')
+          return { ...s, currentDuel: newDuel }
+        }},
+        { label: 'Forfeit', key: 'Q', action: async (s) => ({ ...s, currentScene: 'bridge', currentDuel: null, lastMessage: 'You forfeited the duel.' }) }
+      ]
+    }
+  },
   inventory: (state) => ({
     title: '%yINVENTORY',
     description: 'Status.',
@@ -539,11 +606,24 @@ Use keys 1-9 to toggle equipment.`,
     description: 'Open channel.',
     options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
   }),
-  npc_dialogue: (state) => ({
-    title: 'NPC',
-    description: 'Hail.',
-    options: [{ label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
-  }),
+  npc_dialogue: (state) => {
+    const npc = { id: 'npc_vex', name: 'Captain Vex' }
+    return {
+      title: `%f${npc.name.toUpperCase()} - THE SMUGGLER`,
+      description: '"Looking for a game, pilot? Or just here to talk?"',
+      options: [
+        { label: 'Challenge to Card Duel', key: 'D', action: async (s) => {
+          if (s.playerDeck.filter(c => c.equipped).length < 1) {
+            return { ...s, lastMessage: 'Vex: "You need to equip some cards in your collection first!"' }
+          }
+          const duel = createDuel(s.player!.name, s.playerDeck, npc.name, dbOps.getAllStarCards().slice(0, 10))
+          return { ...s, currentDuel: duel, currentScene: 'card_duel' }
+        }},
+        { label: 'Trade Ore', key: 'T', action: async (s) => s },
+        { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
 }
 
 export const getSceneViewModel = (state: GameState): SceneViewModel => {

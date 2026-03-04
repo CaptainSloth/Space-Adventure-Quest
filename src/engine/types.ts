@@ -97,6 +97,7 @@ export interface StarCard {
   name: string
   type: 'ship' | 'crew' | 'event' | 'planet'
   rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+  preferredRow: 'vanguard' | 'fleet' | 'support' | 'any'
   power: number
   effect?: string
   description: string
