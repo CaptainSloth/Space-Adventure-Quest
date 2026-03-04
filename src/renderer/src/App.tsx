@@ -24,13 +24,18 @@ interface SceneViewModel {
   companyAlliances?: any[]
 }
 
+interface Notification {
+  id: number
+  payload: string
+}
+
 const App: React.FC = () => {
   const [vm, setVm] = useState<SceneViewModel | null>(null)
   const [name, setName] = useState('')
   const [chatInput, setChatInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
-  const [notifications, setNotifications] = useState<string[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   
   const chatEndRef = useRef<HTMLDivElement>(null)
   const lastEventId = useRef<number>(0)
@@ -73,10 +78,20 @@ const App: React.FC = () => {
           const newEvents = newVm.globalEvents.filter((e: any) => e.id > lastEventId.current)
           if (newEvents.length > 0) {
             lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
-            setNotifications(prev => [...prev, ...newEvents.map((e: any) => e.payload)])
-            setTimeout(() => {
-              setNotifications(prev => prev.slice(1))
-            }, 5000)
+            
+            const newToasts = newEvents.map((e: any) => ({ id: e.id, payload: e.payload }))
+            setNotifications(prev => {
+              // Ensure we don't add duplicates that might have sneaked in
+              const uniqueNew = newToasts.filter(nt => !prev.some(p => p.id === nt.id))
+              return [...prev, ...uniqueNew]
+            })
+            
+            // Clear each new toast after 5 seconds
+            newToasts.forEach((t: any) => {
+              setTimeout(() => {
+                setNotifications(prev => prev.filter(note => note.id !== t.id))
+              }, 5000)
+            })
           }
         }
       } catch (e) {
@@ -110,7 +125,6 @@ const App: React.FC = () => {
         newVm = await window.api.invoke('execute-action', key)
       }
     } else if (vm?.title.includes('COMPANY:') && key === 'T') {
-       // Quick deposit for testing
        // @ts-ignore
        newVm = await window.api.invoke('deposit-treasury', 1000)
     } else {
@@ -202,9 +216,9 @@ const App: React.FC = () => {
   return (
     <div className="container">
       <div className="notification-overlay">
-        {notifications.map((note, i) => (
-          <div key={i} className="notification-toast">
-            {parseSansi(`%b[ALERT]%7 ${note}`)}
+        {notifications.map((note) => (
+          <div key={note.id} className="notification-toast">
+            {parseSansi(`%b[ALERT]%7 ${note.payload}`)}
           </div>
         ))}
       </div>
@@ -233,7 +247,6 @@ const App: React.FC = () => {
         {parseSansi(vm.description)}
       </div>
 
-      {/* Shared Chat UI for Sector and Company */}
       {(vm.title.includes('COMM LINK') || vm.title.includes('COMPANY CHAT')) && (
         <div className="chat-interface">
           <div className="chat-messages">
@@ -293,7 +306,7 @@ const App: React.FC = () => {
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 if (vm.title.includes('REGISTRATION')) {
-                   // click handled
+                   //
                 } else if (vm.title.includes('FOUND NEW COMPANY')) {
                    handleCreateCompany()
                 }
