@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatSide, OnlinePlayer, ChatMessage, GlobalEvent, PlayerCard, StarCard } from '../types'
-import { getPortInventory } from '../trading'
+import { getPortInventory, calculateDynamicPrice, Commodity } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
 import { dbOps } from '../../main/db'
 import { createDuel, playCard, passRound } from '../duels'
@@ -516,17 +516,39 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
     }
   },
   port: (state) => {
-    const inventory = getPortInventory(state.currentSector?.portType || 'none')
-    const items = Object.entries(inventory).map(([name, price]) => {
-      const p = price as any
-      return `${name.toUpperCase()}: B:${p.buy} S:${p.sell} [DATA:${name}:${p.buy}:${p.sell}]`
+    const sector = state.currentSector
+    if (!sector || !sector.portInventory) {
+      return {
+        title: '%cPORT SERVICES',
+        description: 'There is no trading port in this sector.',
+        options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
+      }
+    }
+
+    const inv = JSON.parse(sector.portInventory)
+    const items = Object.entries(inv).map(([name, data]) => {
+      const item = data as any
+      const buyPrice = calculateDynamicPrice(name as Commodity, item.stock, true)
+      const sellPrice = calculateDynamicPrice(name as Commodity, item.stock, false)
+      return `${name.toUpperCase().padEnd(10)}: Stock: ${item.stock.toString().padEnd(5)} | Buy: ${buyPrice > 0 ? buyPrice : 'N/A'} | Sell: ${sellPrice > 0 ? sellPrice : 'N/A'} [DATA:${name}:${buyPrice}:${sellPrice}]`
     })
+
     return {
       title: '%cPORT SERVICES',
-      description: `Welcome. Credits: ${state.player?.credits}\n${items.join('\n')}`,
+      description: `Welcome. Credits: \`%f${state.player?.credits}\` %7
+Current Market (Supply & Demand):
+${items.join('\n')}`,
       options: [
-        ...Object.entries(inventory).filter(([_, p]) => (p as any).sell > 0).map(([name, p]) => ({ label: `Buy ${name}`, key: name[0].toLowerCase(), action: async (s: any) => s })),
-        ...Object.entries(inventory).filter(([_, p]) => (p as any).buy > 0).map(([name, p]) => ({ label: `Sell ${name}`, key: name === 'ore' ? 'r' : name === 'fuel' ? 'u' : 'q', action: async (s: any) => s })),
+        ...Object.entries(inv).filter(([_, data]) => (data as any).sell !== -1).map(([name, data]) => ({
+          label: `Buy 1 ${name}`,
+          key: name[0].toLowerCase(),
+          action: async (s: GameState) => s
+        })),
+        ...Object.entries(inv).filter(([_, data]) => (data as any).buy !== -1).map(([name, data]) => ({
+          label: `Sell 1 ${name}`,
+          key: name === 'ore' ? 'r' : name === 'fuel' ? 'u' : 'q',
+          action: async (s: GameState) => s
+        })),
         { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
       ]
     }

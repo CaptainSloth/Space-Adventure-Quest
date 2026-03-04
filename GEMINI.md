@@ -5,29 +5,32 @@
 - **SURGICAL UPDATES**: Only use `replace` to toggle checkboxes in the Phase Plan.
 - **VERIFY BEFORE COMMIT**: Always ensure the file size of `Plan.md` remains large after any edit.
 
-## Current Focus: Phase 7 — CCG Star Cards
+## Current Focus: Phase 8 — Planet Customization & Economy
 
 ## Status Audit: 2026-03-03
 
-### Phase 6 — Advanced Economy & Ship Expansion (100% Verified)
-- [x] Galactic Stock Market: 4 resource stocks with 5m fluctuations and ASCII charts.
-- [x] Player-run Ports: owners can establish trading stations on planets for 10k credits.
-- [x] Real-time charts: Historical price tracking (last 20 ticks) visualized in-engine.
-- [x] Ship Expansion: Move from hardcoded ships to database-driven templates and modifiers.
-- [x] Modifiers: Prefix/Suffix system (Reinforced, Stealth, Mk.II, etc) with multipliers.
-- [x] Legendary Ships: Rare unique hulls (Planet Killer, Midas Touch) with tiered spawning.
-- [x] Ship Capture: Boarding party mechanic added to combat for stealing disabled ships.
-- [x] Admin Ship Editor: Expansive menu for managing the fleet library and building custom hulls.
+### Phase 7 — CCG: Star Cards (100% Verified)
+- [x] Duel Engine: 3-row board system with strategic AI opponents.
+- [x] Database: 40+ cards seeded with unique sci-fi effects (Hijack, Scorch, Booster).
+- [x] Pack System: Buy Star Packs at the Bridge Card Shop for 500 cr.
+- [x] Progression: Card Leveling (combining duplicates) and victory prizes implemented.
 
-### 🐛 Critical Bug Fixes
-- [x] HUD Junk: Replaced fragile regex parsing with direct `HudStats` object transmission.
-- [x] Trade NaN: Fixed IPC argument shift by updating preload wrapper and main handlers.
-- [x] Planet Ghost-towns: Initialized planets with 500-2000 pop to allow immediate mining.
-- [x] Real Reports: Swapped placeholder daily report with actual tick result data.
-- [x] SQLite Syntax: Corrected single-quote usage in `datetime('now')` calls.
+### Phase 8 — Planet Customization & Economy (75% Verified)
+- [x] Planet Buildings: Construction Bay added with Shipyards, Defense Grids, and more.
+- [x] Personalization: Owners can set custom descriptions and ASCII art for planets.
+- [x] Galaxy Expansion: Deep Space (Sectors 401-500) with Black Holes and Asteroid Fields.
+- [x] Space Stations: Players can establish Outposts in empty sectors for 50k cr.
+- [x] Resource Nodes: Asteroid belts and gas clouds spawned for automated mining.
+- [x] Supply & Demand: Port prices now fluctuate based on stock levels (Ideal: 1000).
+- [x] Economy Recovery: Stocks drift back to base levels during the 10m Galactic Tick.
+
+### 🐛 Bug Fixes
+- [x] Build Error: Fixed single-quote syntax in `datetime('now')` SQL strings.
+- [x] UI Clutter: Cleaned up the scene registry to prevent redundant "Star Cards" options.
+- [x] Population Fix: Planets now initialize with 500-2000 pop; unassigned pool is functional.
 
 ## Architectural Decisions
-- **Unified State Sync**: All IPC handlers now return `returnSerializedScene()` to ensure cargo, stocks, and world state are never stale.
-- **Dynamic Ships**: Hull definitions are now stored in `ship_templates` and `ship_modifiers` instead of engine code.
-- **Tick System**: Background timer handles population growth and tax collection every 10m.
-- **Admin Build Flow**: Multi-step state machine (`adminBuilder`) for complex hull commissioning.
+- **Supply/Demand Formula**: `Price = Base * (IdealStock / CurrentStock)`.
+- **Hazards**: Black Holes teleport to random sectors and damage shields.
+- **Automated Mining**: Space Stations in sectors with nodes yield resources every 10 minutes.
+- **Personalization**: `customDescription` and `customAscii` columns added to `planets` table.

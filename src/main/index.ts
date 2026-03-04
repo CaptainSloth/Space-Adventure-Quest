@@ -162,9 +162,11 @@ app.whenReady().then(() => {
 
   // Galactic Ticks (Every 10 minutes)
   setInterval(() => {
+    console.log('GALACTIC TICK: Processing planet growth and economy...')
     dbOps.growAllPlanets()
     dbOps.processAutomatedMining()
-    dbOps.insertGlobalEvent('ECONOMY_TICK', 'A new galactic day has begun. Planetary populations have grown, taxes collected, and automated stations have processed resources.')
+    dbOps.processEconomyRecovery()
+    dbOps.insertGlobalEvent('ECONOMY_TICK', 'A new galactic day has begun. Planetary populations have grown, taxes collected, and port stocks have begun to recover.')
   }, 600000)
 
   // Stock Market Fluctuation (Every 5 minutes)
@@ -350,31 +352,45 @@ app.whenReady().then(() => {
   ipcMain.handle('trade-commodity', async (event, name: string, quantity: number, price: number) => {
     if (!currentState.player) return
     const db = getDb()
+    const sector = dbOps.getSector(currentState.player.sectorId)
+    if (!sector || !sector.portInventory) return
+
+    const inv = JSON.parse(sector.portInventory)
+    const item = inv[name]
+    if (!item) return
+
     const qty = parseInt(quantity as any) || 0
-    const prc = parseInt(price as any) || 0
     const isBuying = qty > 0
-    const total = Math.abs(qty) * prc
+    
+    // Server-side price calculation based on CURRENT STOCK
+    const actualPrice = calculateDynamicPrice(name as Commodity, item.stock, !isBuying)
+    const total = Math.abs(qty) * actualPrice
     
     if (isBuying) {
-      if (currentState.player.credits >= total) {
+      if (item.stock < qty) {
+        currentState.lastMessage = 'Port out of stock!'
+      } else if (currentState.player.credits >= total) {
         currentState.player.credits -= total
         dbOps.updatePlayerCargo(currentState.player.id, name, qty)
+        item.stock -= qty
         currentState.lastMessage = `Purchased ${qty} unit(s) of ${name.toUpperCase()} for ${total} cr.`
       } else {
         currentState.lastMessage = 'Not enough credits!'
       }
     } else { // Selling
       const cargo = dbOps.getPlayerCargo(currentState.player.id) as any[]
-      const item = cargo.find(c => c.commodity === name)
-      if (item && item.quantity >= Math.abs(qty)) {
+      const pItem = cargo.find(c => c.commodity === name)
+      if (pItem && pItem.quantity >= Math.abs(qty)) {
         currentState.player.credits += total
         dbOps.updatePlayerCargo(currentState.player.id, name, qty) 
+        item.stock += Math.abs(qty)
         currentState.lastMessage = `Sold ${Math.abs(qty)} unit(s) of ${name.toUpperCase()} for ${total} cr.`
       } else {
         currentState.lastMessage = 'Not enough cargo to sell!'
       }
     }
     
+    dbOps.updateSectorPortInventory(sector.id, JSON.stringify(inv))
     db.prepare('UPDATE players SET credits = ? WHERE id = ?').run(currentState.player.credits, currentState.player.id)
     return returnSerializedScene()
   })
