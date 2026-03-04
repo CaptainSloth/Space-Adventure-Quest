@@ -71,17 +71,13 @@ const getHudStats = (): HudStats | null => {
   }
 }
 
-const returnSerializedScene = () => {
-  let playerList: { id: string, name: string }[] | undefined
-  if (currentState.currentScene === 'login') {
-    playerList = dbOps.getAllPlayers()
-  }
-  
+const syncAllData = () => {
   if (currentState.player) {
     currentState.bounties = dbOps.getPlayerBounties(currentState.player.id, currentState.player.companyId) as any
     currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
     currentState.stocks = dbOps.getStocks() as any
     currentState.playerPortfolio = dbOps.getPlayerStocks(currentState.player.id) as any
+    currentState.currentPlanets = dbOps.getPlanetsBySector(currentState.player.sectorId) as any
     
     if (currentState.player.companyId) {
       currentState.currentCompany = dbOps.getCompany(currentState.player.companyId) as any
@@ -96,12 +92,25 @@ const returnSerializedScene = () => {
     }
   }
   
+  if (currentState.currentScene === 'stock_details' && currentState.selectedPlanetId) {
+    (currentState as any).stockHistory = dbOps.getStockHistory(currentState.selectedPlanetId).map((h: any) => h.price)
+  }
+
   if (currentState.currentScene === 'company') {
     currentState.availableCompanies = dbOps.getAvailableCompanies() as any
   }
   if (currentState.currentScene === 'rankings') {
     currentState.rankings = dbOps.getRankings() as any
   }
+}
+
+const returnSerializedScene = () => {
+  let playerList: { id: string, name: string }[] | undefined
+  if (currentState.currentScene === 'login') {
+    playerList = dbOps.getAllPlayers()
+  }
+  
+  syncAllData()
 
   return toSerializable(
     getSceneViewModel(currentState), 
@@ -134,17 +143,27 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Galactic Ticks (Every 10 minutes)
+  // - Planet growth
+  // - Tax collection
+  // - Resource generation
+  setInterval(() => {
+    console.log('GALACTIC TICK: Processing planet growth and economy...')
+    dbOps.growAllPlanets()
+    dbOps.insertGlobalEvent('ECONOMY_TICK', 'A new galactic day has begun. Planetary populations have grown and taxes have been collected.')
+  }, 600000)
+
   // Stock Market Fluctuation (Every 5 minutes)
   setInterval(() => {
     dbOps.updateStockPrices()
     dbOps.insertGlobalEvent('STOCK_UPDATE', 'Galactic markets have shifted. Check the Exchange for updated prices.')
   }, 300000)
 
-  // Shipyard Stock Rotation (Every 10 minutes)
+  // Shipyard Stock Rotation (Every 15 minutes)
   setInterval(() => {
     currentState.shipyardStock = getRandomShipyardStock(5)
     dbOps.insertGlobalEvent('SHIPYARD_UPDATE', 'New ship hulls have arrived at the Galactic Showroom.')
-  }, 600000)
+  }, 900000)
 
   ipcMain.handle('get-scene', () => returnSerializedScene())
 
@@ -166,7 +185,26 @@ app.whenReady().then(() => {
         if (newState.pendingShipPurchase) {
           console.log('Persisting ship purchase:', newState.pendingShipPurchase.instanceName)
           dbOps.createPlayerShip(newState.player!.id, newState.pendingShipPurchase)
-          newState.pendingShipPurchase = null // Clear after persistence
+          newState.pendingShipPurchase = null
+        }
+
+        // Handle Port Construction
+        if (newState.lastMessage?.includes('Requesting port construction for')) {
+          const planetId = newState.lastMessage.split('for ')[1]
+          if (newState.player!.credits >= 10000) {
+            newState.player!.credits -= 10000
+            dbOps.updatePlanetPort(planetId, true, JSON.stringify({ ore: 10, fuel: 20, equipment: 100 }))
+            newState.lastMessage = 'Port established! You can now set prices and trade here.'
+            dbOps.insertGlobalEvent('PORT_ESTABLISHED', `A new player-run trading port has opened on ${planetId}!`)
+          }
+        }
+
+        // Handle Manual Galactic Tick
+        if (newState.lastMessage?.includes('Requesting manual galactic economic tick...')) {
+          console.log('MANUAL TICK: Admin triggered growth and market shift.')
+          dbOps.growAllPlanets()
+          dbOps.updateStockPrices()
+          newState.lastMessage = 'Tick Processed: Planets grown, taxes collected, and markets shifted.'
         }
 
         if (newState.player && newState.player !== currentState.player) {
@@ -505,6 +543,24 @@ app.whenReady().then(() => {
     currentState.player.credits -= amount
     getDb().prepare('UPDATE players SET credits = ? WHERE id = ?').run(currentState.player.credits, currentState.player.id)
     currentState.lastMessage = `Deposited ${amount} credits to company treasury.`
+    return returnSerializedScene()
+  })
+
+  ipcMain.handle('set-planet-prices', async (event, planetId: string, prices: any) => {
+    if (!currentState.player) return
+    const planet = dbOps.getPlanetsBySector(currentState.player.sectorId).find(p => p.id === planetId)
+    if (planet && planet.ownerId === currentState.player.id) {
+      dbOps.updatePlanetPort(planetId, true, JSON.stringify(prices))
+      currentState.lastMessage = 'Port prices updated.'
+    }
+    return returnSerializedScene()
+  })
+
+  ipcMain.handle('rename-ship', async (event, newName: string) => {
+    if (!currentState.player) return
+    const db = getDb()
+    db.prepare('UPDATE player_ships SET name = ? WHERE playerId = ?').run(newName, currentState.player.id)
+    currentState.lastMessage = `Ship renamed to: ${newName}`
     return returnSerializedScene()
   })
 

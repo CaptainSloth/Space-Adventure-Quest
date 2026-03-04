@@ -1221,8 +1221,8 @@ content/base/
 > Reshaping the galactic market and fleet
 
 - [x] Galactic Stock Market (Resource speculation)
-- [ ] Player-run Ports (Trading stations on owned planets)
-- [ ] Real-time price history charts (ASCII)
+- [x] Player-run Ports (Trading stations on owned planets)
+- [x] Real-time price history charts (ASCII)
 - [ ] Full ship template library (50–100 base templates)
 - [ ] Ship modifier library (30+ modifiers)
 - [ ] Ship modifier/generation system (prefix + base + suffix)

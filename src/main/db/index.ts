@@ -60,7 +60,7 @@ export function initDb(): void {
             sectorId: s.id,
             name: `Planet ${s.id}-${j + 1}`,
             type: type,
-            population: 0,
+            population: Math.floor(Math.random() * 1500) + 500, // Start with some people!
             maxPopulation: type === 'terran' ? 100000 : 10000,
             taxRate: 0.1,
             createdAt: new Date().toISOString()
@@ -185,6 +185,22 @@ export function initDb(): void {
     `)
   }
 
+  // Check for planet port columns
+  const planetCols = db.prepare("PRAGMA table_info(planets)").all() as any[]
+  if (!planetCols.some(col => col.name === 'hasPort')) {
+    console.log('Migrating: Adding port columns to planets...')
+    db.transaction(() => {
+      db.prepare("ALTER TABLE planets ADD COLUMN hasPort BOOLEAN DEFAULT FALSE").run()
+      db.prepare("ALTER TABLE planets ADD COLUMN portPrices TEXT").run()
+    })()
+  }
+
+  // Check for stock history
+  const hasHistory = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_history'").get()
+  if (!hasHistory) {
+    db.exec('CREATE TABLE stock_history (symbol TEXT NOT NULL, price REAL NOT NULL, recordedAt TEXT NOT NULL)')
+  }
+
   // Initialize Stocks
   const stockCount = db.prepare('SELECT count(*) as count FROM stocks').get().count
   if (stockCount === 0) {
@@ -245,6 +261,44 @@ export const dbOps = {
       SET oreMiners = ?, fuelMiners = ?, equipmentMiners = ? 
       WHERE id = ?
     `).run(ore, fuel, equipment, planetId)
+  },
+  updatePlanetPopulation: (planetId: string, amount: number) => {
+    return db.prepare('UPDATE planets SET population = population + ? WHERE id = ?').run(amount, planetId)
+  },
+  growAllPlanets: () => {
+    const growthRates: Record<string, number> = {
+      'terran': 0.05,
+      'ocean': 0.03,
+      'desert': 0.01,
+      'ice': 0.01,
+      'volcanic': 0.005,
+      'gas_giant': 0,
+      'barren': 0.005
+    }
+    const planets = db.prepare('SELECT id, type, population, maxPopulation, ownerId, taxRate FROM planets').all() as any[]
+    
+    db.transaction(() => {
+      planets.forEach(p => {
+        const rate = growthRates[p.type] || 0.01
+        const growth = Math.floor(Math.max(10, p.population * rate))
+        const newPop = Math.min(p.maxPopulation, p.population + growth)
+        
+        let taxCollected = 0
+        if (p.ownerId && p.population > 0) {
+          taxCollected = Math.floor(p.population * 0.1 * p.taxRate)
+          db.prepare('UPDATE players SET credits = credits + ? WHERE id = ?').run(taxCollected, p.ownerId)
+        }
+        
+        db.prepare('UPDATE planets SET population = ?, credits = credits + ? WHERE id = ?').run(newPop, taxCollected, p.id)
+        
+        // Log real report
+        const report = `Tick Report: Pop +${growth} (Total: ${newPop}). Taxes: ${taxCollected} cr.`
+        db.prepare("INSERT INTO planet_reports (planetId, report, createdAt) VALUES (?, ?, datetime('now'))").run(p.id, report)
+      })
+    })()
+  },
+  getPlanetReport: (planetId: string) => {
+    return db.prepare('SELECT report FROM planet_reports WHERE planetId = ? ORDER BY id DESC LIMIT 1').get(planetId)
   },
   updatePlanetTaxRate: (planetId: string, taxRate: number) => {
     return db.prepare('UPDATE planets SET taxRate = ? WHERE id = ?').run(taxRate, planetId)
@@ -332,7 +386,7 @@ export const dbOps = {
     `).all(companyId, limit).reverse()
   },
   createAlliance: (idA: string, idB: string) => {
-    return db.prepare('INSERT INTO company_alliances (companyA, companyB, formedAt) VALUES (?, ?, datetime("now"))').run(idA, idB)
+    return db.prepare("INSERT INTO company_alliances (companyA, companyB, formedAt) VALUES (?, ?, datetime('now'))").run(idA, idB)
   },
   getAlliances: (companyId: string) => {
     return db.prepare('SELECT * FROM company_alliances WHERE companyA = ? OR companyB = ?').all(companyId, companyId)
@@ -485,11 +539,18 @@ export const dbOps = {
   updateStockPrices: () => {
     const stocks = db.prepare('SELECT * FROM stocks').all() as any[]
     const stmt = db.prepare('UPDATE stocks SET price = ?, prevPrice = ? WHERE symbol = ?')
-    stocks.forEach(s => {
-      const change = 1 + (Math.random() * s.volatility * 2 - s.volatility)
-      const newPrice = Math.max(10, s.price * change)
-      stmt.run(newPrice, s.price, s.symbol)
-    })
+    const histStmt = db.prepare("INSERT INTO stock_history (symbol, price, recordedAt) VALUES (?, ?, datetime('now'))")
+    
+    db.transaction(() => {
+      stocks.forEach(s => {
+        // Record history before update
+        histStmt.run(s.symbol, s.price)
+        
+        const change = 1 + (Math.random() * s.volatility * 2 - s.volatility)
+        const newPrice = Math.max(10, s.price * change)
+        stmt.run(newPrice, s.price, s.symbol)
+      })
+    })()
   },
   getPlayerStocks: (playerId: string) => {
     return db.prepare(`
@@ -525,5 +586,14 @@ export const dbOps = {
   },
   getPlayerShip: (playerId: string) => {
     return db.prepare('SELECT * FROM player_ships WHERE playerId = ? ORDER BY id DESC LIMIT 1').get(playerId)
+  },
+  updatePlanetPort: (planetId: string, hasPort: boolean, prices: string) => {
+    return db.prepare('UPDATE planets SET hasPort = ?, portPrices = ? WHERE id = ?').run(hasPort ? 1 : 0, prices, planetId)
+  },
+  insertStockHistory: (symbol: string, price: number) => {
+    return db.prepare("INSERT INTO stock_history (symbol, price, recordedAt) VALUES (?, ?, datetime('now'))").run(symbol, price)
+  },
+  getStockHistory: (symbol: string, limit: number = 20) => {
+    return db.prepare('SELECT price FROM stock_history WHERE symbol = ? ORDER BY recordedAt DESC LIMIT ?').all(symbol, limit).reverse()
   }
 }

@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS planets (
   equipmentMiners INTEGER DEFAULT 0,
   taxRate REAL DEFAULT 0.10,
   accessPolicy TEXT DEFAULT 'open',
+  hasPort BOOLEAN DEFAULT FALSE,
+  portPrices TEXT,                    -- JSON: { ore: N, fuel: N, equipment: N }
   customDescription TEXT,
   customAscii TEXT,                    -- JSON string[]
   landingMessage TEXT,
@@ -221,6 +223,13 @@ CREATE TABLE IF NOT EXISTS player_stocks (
   quantity INTEGER DEFAULT 0,
   avgPrice REAL DEFAULT 0,
   PRIMARY KEY (playerId, symbol)
+);
+
+-- Stock History
+CREATE TABLE IF NOT EXISTS stock_history (
+  symbol TEXT NOT NULL,
+  price REAL NOT NULL,
+  recordedAt TEXT NOT NULL
 );
 
 -- World Settings
