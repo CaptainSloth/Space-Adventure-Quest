@@ -1272,7 +1272,7 @@ content/base/
 - [ ] Player management (ban, reset, grant items)
 - [ ] World configuration (all settings exposed)
 
-### Phase 10 — Polish & Fun (100% Verified)
+### Phase 10 — Polish & Fun
 > The most important phase
 
 - [x] ASCII art for all ships, planets, NPCs, scenes
