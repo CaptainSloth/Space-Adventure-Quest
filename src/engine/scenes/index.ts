@@ -1025,8 +1025,8 @@ Credits: Insurance payout received (Partial).`,
   }),
   messages: (state) => ({
     title: '`%bCOMM LINK` %7',
-    description: '`%aENCRYPTED CHANNEL OPEN` %7
-Scanning local frequencies for priority signals...',
+    description: `\`%aENCRYPTED CHANNEL OPEN\` %7
+Scanning local frequencies for priority signals...`,
     options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
   }),
   npc_dialogue: (state) => {
