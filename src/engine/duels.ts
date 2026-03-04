@@ -1,7 +1,6 @@
 import { DuelState, DuelSide, DuelRow, StarCard, PlayerCard } from './types'
 
 export function createDuel(playerName: string, playerDeck: PlayerCard[], opponentName: string, opponentDeck: StarCard[]): DuelState {
-  // Draw initial hands (10 cards each for strategic depth)
   const playerHand = playerDeck.filter(c => c.equipped).sort(() => Math.random() - 0.5).slice(0, 10)
   const opponentHand = opponentDeck.sort(() => Math.random() - 0.5).slice(0, 10)
 
@@ -30,16 +29,9 @@ function createDuelSide(name: string, hand: StarCard[]): DuelSide {
 
 export function calculateRowScore(row: DuelRow): number {
   let baseScore = row.cards.reduce((sum, c) => sum + c.power, 0)
-  
-  // Effect: Signal Booster (Horn) - Doubles row power
   const hasBooster = row.cards.some(c => c.effect === 'booster')
   if (hasBooster) baseScore *= 2
-
-  // Effect: Nebula Screen (Fog) - Reduce row power to 1 per card
-  if (row.isWeathered) {
-    baseScore = row.cards.length
-  }
-
+  if (row.isWeathered) baseScore = row.cards.length
   return baseScore
 }
 
@@ -60,30 +52,22 @@ export function playCard(state: DuelState, side: 'player' | 'opponent', cardIdx:
   const card = actor.hand[cardIdx]
   
   if (!card) return state
-
-  // Remove from hand
   actor.hand.splice(cardIdx, 1)
   
-  // Handle Immediate Effects
-  if (card.effect === 'spy') { // Deep Cover Agent
-    // Card goes to opponent's field, but actor draws 2
+  if (card.effect === 'spy') {
     opponent[rowName].cards.push(card)
-    state.log.push(`${actor.name} deployed a Deep Cover Agent to ${opponent.name}'s ${rowName.toUpperCase()}.`)
-    // Draw 2 from deck if we had one, for now just draw dummy cards or log it
-    state.log.push(`${actor.name} intercepted enemy intel (Draw 2).`)
-  } else if (card.effect === 'scorch') { // Orbital Strike
-    // Destroy highest power card(s) on opponent board
+    state.log.push(`${actor.name} deployed ${card.name} (Spy) to enemy ${rowName.toUpperCase()}.`)
+  } else if (card.effect === 'scorch') {
     const allOpponentCards = [...opponent.vanguard.cards, ...opponent.fleet.cards, ...opponent.support.cards]
     if (allOpponentCards.length > 0) {
       const maxPower = Math.max(...allOpponentCards.map(c => c.power))
       opponent.vanguard.cards = opponent.vanguard.cards.filter(c => c.power < maxPower)
       opponent.fleet.cards = opponent.fleet.cards.filter(c => c.power < maxPower)
       opponent.support.cards = opponent.support.cards.filter(c => c.power < maxPower)
-      state.log.push(`${actor.name} triggered an Orbital Strike! High-power signatures neutralized.`)
+      state.log.push(`${actor.name} used ${card.name} (Orbital Strike)!`)
     }
     actor[rowName].cards.push(card)
-  } else if (card.effect === 'hijack') { // Subroutine Hijack
-    // Steal random enemy card from a random row
+  } else if (card.effect === 'hijack') {
     const rows: ('vanguard' | 'fleet' | 'support')[] = ['vanguard', 'fleet', 'support']
     const validRows = rows.filter(r => opponent[r].cards.length > 0)
     if (validRows.length > 0) {
@@ -91,20 +75,24 @@ export function playCard(state: DuelState, side: 'player' | 'opponent', cardIdx:
       const stolen = opponent[targetRow].cards.pop()
       if (stolen) {
         actor[rowName].cards.push(stolen)
-        state.log.push(`${actor.name} hijacked ${stolen.name} from ${opponent.name}'s ${targetRow.toUpperCase()}!`)
+        state.log.push(`${actor.name} hijacked ${stolen.name}!`)
       }
     }
     actor[rowName].cards.push(card)
   } else {
-    // Standard placement
     actor[rowName].cards.push(card)
-    state.log.push(`${actor.name} deployed ${card.name} to ${rowName.toUpperCase()}.`)
+    state.log.push(`${actor.name} played ${card.name}.`)
   }
   
   updateDuelScores(state)
   
   if (!opponent.hasPassed) {
     state.turn = side === 'player' ? 'opponent' : 'player'
+  }
+
+  // If it's now opponent's turn and they haven't passed, process AI
+  if (state.turn === 'opponent' && !state.opponent.hasPassed && !state.winner) {
+    return processAiTurn(state)
   }
 
   return state
@@ -120,9 +108,45 @@ export function passRound(state: DuelState, side: 'player' | 'opponent'): DuelSt
     return resolveRound(state)
   } else {
     state.turn = side === 'player' ? 'opponent' : 'player'
+    if (state.turn === 'opponent' && !state.winner) {
+      return processAiTurn(state)
+    }
   }
 
   return state
+}
+
+export function processAiTurn(state: DuelState): DuelState {
+  const ai = state.opponent
+  const player = state.player
+
+  // AI Decision Logic
+  // 1. If AI is winning and player has passed, AI passes.
+  if (player.hasPassed && ai.score > player.score) {
+    return passRound(state, 'opponent')
+  }
+
+  // 2. If AI is out of cards, AI passes.
+  if (ai.hand.length === 0) {
+    return passRound(state, 'opponent')
+  }
+
+  // 3. If AI is losing by a huge margin and has few cards, maybe pass to save them.
+  if (player.score - ai.score > 20 && ai.hand.length < 3) {
+    return passRound(state, 'opponent')
+  }
+
+  // 4. Play a card.
+  // Prefer playing lower power cards first if winning, higher power if losing.
+  const cardIdx = player.score > ai.score ? 
+    ai.hand.findIndex(c => c.power === Math.max(...ai.hand.map(cc => cc.power))) :
+    ai.hand.findIndex(c => c.power === Math.min(...ai.hand.map(cc => cc.power)))
+  
+  const finalIdx = cardIdx === -1 ? 0 : cardIdx
+  const card = ai.hand[finalIdx]
+  const row = card.preferredRow === 'any' ? 'fleet' : card.preferredRow as any
+  
+  return playCard(state, 'opponent', finalIdx, row)
 }
 
 function resolveRound(state: DuelState): DuelState {
@@ -131,19 +155,18 @@ function resolveRound(state: DuelState): DuelState {
 
   if (pScore > oScore) {
     state.opponent.lives--
-    state.log.push(`${state.player.name} WINS THE ROUND!`)
+    state.log.push(`${state.player.name} wins the round!`)
   } else if (oScore > pScore) {
     state.player.lives--
-    state.log.push(`${state.opponent.name} WINS THE ROUND!`)
+    state.log.push(`${state.opponent.name} wins the round!`)
   } else {
-    state.player.lives--
-    state.opponent.lives--
-    state.log.push(`ROUND DRAW! Energy depleted for both sides.`)
+    state.player.lives--; state.opponent.lives--
+    state.log.push(`Draw! Energy depleted.`)
   }
 
   if (state.player.lives <= 0 || state.opponent.lives <= 0) {
     state.winner = state.player.lives > state.opponent.lives ? 'player' : 'opponent'
-    state.log.push(`DUEL ENDED: ${state.winner === 'player' ? state.player.name : state.opponent.name} IS VICTORIOUS!`)
+    state.log.push(`Champion: ${state.winner === 'player' ? state.player.name : state.opponent.name}`)
   } else {
     state.round++
     state.player.vanguard.cards = []; state.player.fleet.cards = []; state.player.support.cards = []
@@ -152,6 +175,7 @@ function resolveRound(state: DuelState): DuelState {
     state.opponent.hasPassed = false
     updateDuelScores(state)
     state.turn = pScore > oScore ? 'player' : 'opponent'
+    if (state.turn === 'opponent') return processAiTurn(state)
   }
 
   return state
