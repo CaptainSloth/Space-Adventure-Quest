@@ -196,6 +196,16 @@ export interface GameState {
   companyChatMessages: ChatMessage[]
   companyAlliances: any[]
   playerCargo: CargoItem[]
+  stocks: any[]
+  playerPortfolio: any[]
+  shipyardStock: any[]
+  pendingShipPurchase?: any | null
+  adminBuilder?: {
+    templateId?: string
+    prefixId?: number
+    suffixId?: number
+    step: 'menu' | 'template_list' | 'modifier_list' | 'build_template' | 'build_prefix' | 'build_suffix' | 'review'
+  }
 }
 
 export interface SerializableSceneOption {
@@ -233,6 +243,9 @@ export interface SerializableSceneViewModel {
   companyAlliances?: any[]
   playerCargo?: CargoItem[]
   hudStats?: HudStats | null
+  stocks?: any[]
+  playerPortfolio?: any[]
+  shipyardStock?: any[]
 }
 
 export interface SceneOption extends SerializableSceneOption {

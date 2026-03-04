@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS planets (
   equipmentMiners INTEGER DEFAULT 0,
   taxRate REAL DEFAULT 0.10,
   accessPolicy TEXT DEFAULT 'open',
+  hasPort BOOLEAN DEFAULT FALSE,
+  portPrices TEXT,                    -- JSON: { ore: N, fuel: N, equipment: N }
   customDescription TEXT,
   customAscii TEXT,                    -- JSON string[]
   landingMessage TEXT,
@@ -202,6 +204,57 @@ CREATE TABLE IF NOT EXISTS company_alliances (
   companyB TEXT NOT NULL,
   formedAt TEXT NOT NULL,
   PRIMARY KEY (companyA, companyB)
+);
+
+-- Stocks
+CREATE TABLE IF NOT EXISTS stocks (
+  symbol TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  price REAL NOT NULL,
+  prevPrice REAL NOT NULL,
+  volatility REAL DEFAULT 0.05,
+  description TEXT
+);
+
+-- Player Portfolio
+CREATE TABLE IF NOT EXISTS player_stocks (
+  playerId TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  quantity INTEGER DEFAULT 0,
+  avgPrice REAL DEFAULT 0,
+  PRIMARY KEY (playerId, symbol)
+);
+
+-- Stock History
+CREATE TABLE IF NOT EXISTS stock_history (
+  symbol TEXT NOT NULL,
+  price REAL NOT NULL,
+  recordedAt TEXT NOT NULL
+);
+
+-- Dynamic Ship Templates
+CREATE TABLE IF NOT EXISTS ship_templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  baseHolds INTEGER DEFAULT 5,
+  baseShields INTEGER DEFAULT 10,
+  baseFighters INTEGER DEFAULT 0,
+  baseCost INTEGER DEFAULT 500,
+  description TEXT,
+  tier INTEGER DEFAULT 1,
+  isCustom BOOLEAN DEFAULT FALSE
+);
+
+-- Dynamic Ship Modifiers
+CREATE TABLE IF NOT EXISTS ship_modifiers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,               -- 'prefix' or 'suffix'
+  holdsMod REAL DEFAULT 1.0,
+  shieldsMod REAL DEFAULT 1.0,
+  fightersMod REAL DEFAULT 1.0,
+  costMod REAL DEFAULT 1.0,
+  description TEXT
 );
 
 -- World Settings

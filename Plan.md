@@ -1217,12 +1217,15 @@ content/base/
 - [x] NPC combat opponents with varied AI
 - [x] Admin NPC editor
 
-### Phase 6 — Ship Expansion
-> Thousands of ships
+### Phase 6 — Advanced Economy & Ship Expansion
+> Reshaping the galactic market and fleet
 
-- [ ] Ship modifier/generation system (prefix + base + suffix)
+- [x] Galactic Stock Market (Resource speculation)
+- [x] Player-run Ports (Trading stations on owned planets)
+- [x] Real-time price history charts (ASCII)
 - [ ] Full ship template library (50–100 base templates)
 - [ ] Ship modifier library (30+ modifiers)
+- [ ] Ship modifier/generation system (prefix + base + suffix)
 - [ ] Legendary ships (unique, one-per-galaxy)
 - [ ] Ship capture mechanic (board and steal opponent's ship)
 - [ ] Admin ship editor

@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDb, dbOps, getDb } from './db'
 import { getSceneViewModel, toSerializable } from '../engine/scenes'
 import { GameState, HudStats } from '../engine/types'
+import { getRandomShipyardStock } from '../engine/ships'
 
 let currentState: GameState = {
   player: null,
@@ -23,7 +24,10 @@ let currentState: GameState = {
   availableCompanies: [],
   companyChatMessages: [],
   companyAlliances: [],
-  playerCargo: []
+  playerCargo: [],
+  stocks: [],
+  playerPortfolio: [],
+  shipyardStock: getRandomShipyardStock(5)
 }
 
 function createWindow(): void {
@@ -56,14 +60,9 @@ function createWindow(): void {
 
 const getHudStats = (): HudStats | null => {
   if (!currentState.player) return null
-  const shipNames: Record<string, string> = {
-    'scout_wasp': 'Wasp Scout',
-    'trader_hauler': 'Hauler',
-    'frigate_falcon': 'Falcon Frigate'
-  }
   return {
     playerName: currentState.player.name,
-    shipName: shipNames[currentState.player.shipId || ''] || 'Escape Pod',
+    shipName: currentState.player.shipId || 'Escape Pod',
     turns: currentState.player.turns,
     maxTurns: currentState.player.maxTurns,
     credits: currentState.player.credits,
@@ -72,16 +71,15 @@ const getHudStats = (): HudStats | null => {
   }
 }
 
-app.whenReady().then(() => {
-  initDb()
-  electronApp.setAppUserModelId('com.electron')
-
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
-  const syncCompanyData = () => {
-    if (currentState.player?.companyId) {
+const syncAllData = () => {
+  if (currentState.player) {
+    currentState.bounties = dbOps.getPlayerBounties(currentState.player.id, currentState.player.companyId) as any
+    currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
+    currentState.stocks = dbOps.getStocks() as any
+    currentState.playerPortfolio = dbOps.getPlayerStocks(currentState.player.id) as any
+    currentState.currentPlanets = dbOps.getPlanetsBySector(currentState.player.sectorId) as any
+    
+    if (currentState.player.companyId) {
       currentState.currentCompany = dbOps.getCompany(currentState.player.companyId) as any
       currentState.companyMembers = dbOps.getCompanyMembers(currentState.player.companyId) as any
       currentState.companyChatMessages = dbOps.getCompanyMessages(currentState.player.companyId) as any
@@ -92,26 +90,82 @@ app.whenReady().then(() => {
       currentState.companyChatMessages = []
       currentState.companyAlliances = []
     }
-    if (currentState.currentScene === 'company') {
-      currentState.availableCompanies = dbOps.getAvailableCompanies() as any
-    }
+  }
+  
+  if (currentState.currentScene === 'stock_details' && currentState.selectedPlanetId) {
+    (currentState as any).stockHistory = dbOps.getStockHistory(currentState.selectedPlanetId).map((h: any) => h.price)
   }
 
-  ipcMain.handle('get-scene', (event) => {
-    let playerList: { id: string, name: string }[] | undefined
-    if (currentState.currentScene === 'login') {
-      playerList = dbOps.getAllPlayers()
-    }
-    if (currentState.player) {
-      currentState.bounties = dbOps.getPlayerBounties(currentState.player.id, currentState.player.companyId) as any
-      currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
-      syncCompanyData()
-    }
-    if (currentState.currentScene === 'rankings') {
-      currentState.rankings = dbOps.getRankings() as any
-    }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+  if (currentState.currentScene === 'company') {
+    currentState.availableCompanies = dbOps.getAvailableCompanies() as any
+  }
+  if (currentState.currentScene === 'rankings') {
+    currentState.rankings = dbOps.getRankings() as any
+  }
+}
+
+const returnSerializedScene = () => {
+  let playerList: { id: string, name: string }[] | undefined
+  if (currentState.currentScene === 'login') {
+    playerList = dbOps.getAllPlayers()
+  }
+  
+  syncAllData()
+
+  return toSerializable(
+    getSceneViewModel(currentState), 
+    currentState.lastMessage, 
+    currentState.selectedPlanetId, 
+    playerList, 
+    currentState.onlinePlayers, 
+    currentState.chatMessages, 
+    currentState.globalEvents, 
+    currentState.rankings, 
+    currentState.bounties, 
+    currentState.currentCompany, 
+    currentState.companyMembers, 
+    currentState.availableCompanies, 
+    currentState.companyChatMessages, 
+    currentState.companyAlliances, 
+    currentState.playerCargo, 
+    getHudStats(), 
+    currentState.stocks, 
+    currentState.playerPortfolio,
+    currentState.shipyardStock
+  )
+}
+
+app.whenReady().then(() => {
+  initDb()
+  electronApp.setAppUserModelId('com.electron')
+
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window)
   })
+
+  // Galactic Ticks (Every 10 minutes)
+  // - Planet growth
+  // - Tax collection
+  // - Resource generation
+  setInterval(() => {
+    console.log('GALACTIC TICK: Processing planet growth and economy...')
+    dbOps.growAllPlanets()
+    dbOps.insertGlobalEvent('ECONOMY_TICK', 'A new galactic day has begun. Planetary populations have grown and taxes have been collected.')
+  }, 600000)
+
+  // Stock Market Fluctuation (Every 5 minutes)
+  setInterval(() => {
+    dbOps.updateStockPrices()
+    dbOps.insertGlobalEvent('STOCK_UPDATE', 'Galactic markets have shifted. Check the Exchange for updated prices.')
+  }, 300000)
+
+  // Shipyard Stock Rotation (Every 15 minutes)
+  setInterval(() => {
+    currentState.shipyardStock = getRandomShipyardStock(5)
+    dbOps.insertGlobalEvent('SHIPYARD_UPDATE', 'New ship hulls have arrived at the Galactic Showroom.')
+  }, 900000)
+
+  ipcMain.handle('get-scene', () => returnSerializedScene())
 
   ipcMain.handle('execute-action', async (event, key: string) => {
     const db = getDb()
@@ -125,6 +179,32 @@ app.whenReady().then(() => {
       if (newState) {
         if (newState.currentScene !== oldScene) {
           newState.lastMessage = null
+        }
+
+        // Handle Ship Purchase Persistence
+        if (newState.pendingShipPurchase) {
+          console.log('Persisting ship purchase:', newState.pendingShipPurchase.instanceName)
+          dbOps.createPlayerShip(newState.player!.id, newState.pendingShipPurchase)
+          newState.pendingShipPurchase = null
+        }
+
+        // Handle Port Construction
+        if (newState.lastMessage?.includes('Requesting port construction for')) {
+          const planetId = newState.lastMessage.split('for ')[1]
+          if (newState.player!.credits >= 10000) {
+            newState.player!.credits -= 10000
+            dbOps.updatePlanetPort(planetId, true, JSON.stringify({ ore: 10, fuel: 20, equipment: 100 }))
+            newState.lastMessage = 'Port established! You can now set prices and trade here.'
+            dbOps.insertGlobalEvent('PORT_ESTABLISHED', `A new player-run trading port has opened on ${planetId}!`)
+          }
+        }
+
+        // Handle Manual Galactic Tick
+        if (newState.lastMessage?.includes('Requesting manual galactic economic tick...')) {
+          console.log('MANUAL TICK: Admin triggered growth and market shift.')
+          dbOps.growAllPlanets()
+          dbOps.updateStockPrices()
+          newState.lastMessage = 'Tick Processed: Planets grown, taxes collected, and markets shifted.'
         }
 
         if (newState.player && newState.player !== currentState.player) {
@@ -141,9 +221,10 @@ app.whenReady().then(() => {
               alignment = ?,
               kills = ?,
               companyId = ?,
-              shipId = ?
+              shipId = ?,
+              maxTurns = ?
             WHERE id = ?
-          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.alignment, p.kills || 0, p.companyId, p.shipId, p.id)
+          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.alignment, p.kills || 0, p.companyId, p.shipId, p.maxTurns, p.id)
           
           if (p.sectorId !== currentState.player?.sectorId) {
             const sectorData = dbOps.getSector(p.sectorId)
@@ -158,28 +239,16 @@ app.whenReady().then(() => {
       }
     }
     
-    let playerList: { id: string, name: string }[] | undefined
-    if (currentState.currentScene === 'login') {
-      playerList = dbOps.getAllPlayers()
-    }
-    if (currentState.player) {
-      currentState.bounties = dbOps.getPlayerBounties(currentState.player.id, currentState.player.companyId) as any
-      currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
-      syncCompanyData()
-    }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
-  ipcMain.handle('poll-state', async (event) => {
+  ipcMain.handle('poll-state', async () => {
     if (currentState.player) {
       const db = getDb()
       dbOps.updatePlayerHeartbeat(currentState.player.id)
       currentState.onlinePlayers = dbOps.getOnlinePlayersInSector(currentState.player.sectorId, currentState.player.id) as any
       currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
       currentState.globalEvents = dbOps.getGlobalEvents() as any
-      currentState.bounties = dbOps.getPlayerBounties(currentState.player.id, currentState.player.companyId) as any
-      currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
-      syncCompanyData()
       
       if (Math.random() < 0.1) {
         const wanderingNpcs = db.prepare("SELECT * FROM npcs WHERE scheduleType IN ('wanderer', 'patrol')").all() as any[]
@@ -202,12 +271,8 @@ app.whenReady().then(() => {
         ]
         dbOps.insertGlobalEvent('MULTINODE_EVENT', payloads[Math.floor(Math.random() * payloads.length)])
       }
-
-      if (currentState.currentScene === 'rankings') {
-        currentState.rankings = dbOps.getRankings() as any
-      }
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('trade-commodity', async (event, name: string, quantity: number, price: number) => {
@@ -218,8 +283,6 @@ app.whenReady().then(() => {
     const isBuying = qty > 0
     const total = Math.abs(qty) * prc
     
-    console.log(`TRADE: ${currentState.player.name} ${isBuying ? 'BUYING' : 'SELLING'} ${Math.abs(qty)} ${name} @ ${prc}cr (Total: ${total})`)
-
     if (isBuying) {
       if (currentState.player.credits >= total) {
         currentState.player.credits -= total
@@ -241,24 +304,52 @@ app.whenReady().then(() => {
     }
     
     db.prepare('UPDATE players SET credits = ? WHERE id = ?').run(currentState.player.credits, currentState.player.id)
-    currentState.playerCargo = dbOps.getPlayerCargo(currentState.player.id) as any
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
+  })
+
+  ipcMain.handle('trade-stock', async (event, symbol: string, quantity: number, price: number) => {
+    if (!currentState.player) return
+    const db = getDb()
+    const qty = parseInt(quantity as any) || 0
+    const prc = parseFloat(price as any) || 0
+    const isBuying = qty > 0
+    const total = Math.round(Math.abs(qty) * prc)
+
+    try {
+      if (isBuying) {
+        if (currentState.player.credits >= total) {
+          dbOps.tradeStock(currentState.player.id, symbol, qty, prc)
+          currentState.player.credits -= total
+          currentState.lastMessage = `Bought ${qty} shares of ${symbol} for ${total} cr.`
+        } else {
+          currentState.lastMessage = 'Insufficient credits for stock purchase.'
+        }
+      } else {
+        dbOps.tradeStock(currentState.player.id, symbol, qty, prc)
+        currentState.player.credits += total
+        currentState.lastMessage = `Sold ${Math.abs(qty)} shares of ${symbol} for ${total} cr.`
+      }
+      
+      db.prepare('UPDATE players SET credits = ? WHERE id = ?').run(currentState.player.credits, currentState.player.id)
+    } catch (e: any) {
+      currentState.lastMessage = `Stock trade failed: ${e.message}`
+    }
+
+    return returnSerializedScene()
   })
 
   ipcMain.handle('send-message', async (event, message: string) => {
     if (currentState.player) {
       dbOps.insertSectorMessage(currentState.player.sectorId, currentState.player.id, message)
-      currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('send-company-message', async (event, message: string) => {
     if (currentState.player && currentState.player.companyId) {
       dbOps.insertCompanyMessage(currentState.player.companyId, currentState.player.id, message)
-      currentState.companyChatMessages = dbOps.getCompanyMessages(currentState.player.companyId) as any
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('create-character', async (event, name: string, faction: string) => {
@@ -314,7 +405,7 @@ app.whenReady().then(() => {
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
     })
 
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('login-id', async (event, playerId: string) => {
@@ -323,7 +414,7 @@ app.whenReady().then(() => {
     
     if (!player) {
       currentState.lastMessage = `Pilot record not found.`
-      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+      return returnSerializedScene()
     }
 
     dbOps.updatePlayerLastLogin(player.id)
@@ -350,8 +441,43 @@ app.whenReady().then(() => {
     currentState.currentScene = 'bridge'
     currentState.lastMessage = `Welcome back, Captain ${player.name}.`
     dbOps.insertGlobalEvent('PLAYER_LOGIN', `Captain ${player.name} has resumed command.`)
-    syncCompanyData()
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
+  })
+
+  ipcMain.handle('login', async (event, name: string) => {
+    const db = getDb()
+    const player = db.prepare('SELECT * FROM players WHERE name = ?').get(name) as any
+    
+    if (!player) {
+      currentState.lastMessage = `Pilot "${name}" not found.`
+      return returnSerializedScene()
+    }
+
+    dbOps.updatePlayerLastLogin(player.id)
+    const sectorData = dbOps.getSector(player.sectorId)
+    const planets = dbOps.getPlanetsBySector(player.sectorId)
+
+    currentState.player = {
+      ...player,
+      hp: player.hp || 100,
+      maxHp: player.maxHp || 100,
+      shields: player.shields || 0,
+      faction: player.faction as any,
+      weaponLevel: player.weaponLevel || 1,
+      shieldLevel: player.shieldLevel || 1,
+      engineLevel: player.engineLevel || 1,
+      kills: player.kills || 0,
+      companyId: player.companyId
+    }
+    currentState.currentSector = {
+      ...sectorData,
+      warps: JSON.parse(sectorData.warps)
+    }
+    currentState.currentPlanets = planets
+    currentState.currentScene = 'bridge'
+    currentState.lastMessage = `Welcome back, Captain ${player.name}.`
+    dbOps.insertGlobalEvent('PLAYER_LOGIN', `Captain ${player.name} has resumed command.`)
+    return returnSerializedScene()
   })
 
   ipcMain.handle('claim-planet', async (event, planetId: string) => {
@@ -361,13 +487,13 @@ app.whenReady().then(() => {
     currentState.lastMessage = 'Planet claimed!'
     const planet = currentState.currentPlanets.find(p => p.id === planetId)
     dbOps.insertGlobalEvent('PLANET_CLAIM', `Captain ${currentState.player.name} claimed ${planet?.name} in Sector ${currentState.player.sectorId}.`)
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('create-company', async (event, name: string) => {
     if (!currentState.player || currentState.player.credits < 5000) {
       currentState.lastMessage = 'Insufficient credits to form a company (5000 required).'
-      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+      return returnSerializedScene()
     }
     
     const company = {
@@ -394,8 +520,7 @@ app.whenReady().then(() => {
       expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString()
     })
 
-    syncCompanyData()
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('join-company', async (event, companyId: string) => {
@@ -405,59 +530,38 @@ app.whenReady().then(() => {
     const company = dbOps.getCompany(companyId) as any
     currentState.lastMessage = `You have joined ${company.name}.`
     dbOps.insertGlobalEvent('COMPANY_JOIN', `Captain ${currentState.player.name} has joined ${company.name}.`)
-    syncCompanyData()
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
   ipcMain.handle('deposit-treasury', async (event, amount: number) => {
     if (!currentState.player || !currentState.player.companyId || currentState.player.credits < amount) {
       currentState.lastMessage = 'Insufficient credits or not in a company.'
-      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+      return returnSerializedScene()
     }
     
     dbOps.updateCompanyTreasury(currentState.player.companyId, amount)
     currentState.player.credits -= amount
     getDb().prepare('UPDATE players SET credits = ? WHERE id = ?').run(currentState.player.credits, currentState.player.id)
     currentState.lastMessage = `Deposited ${amount} credits to company treasury.`
-    syncCompanyData()
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    return returnSerializedScene()
   })
 
-  ipcMain.handle('login', async (event, name: string) => {
+  ipcMain.handle('set-planet-prices', async (event, planetId: string, prices: any) => {
+    if (!currentState.player) return
+    const planet = dbOps.getPlanetsBySector(currentState.player.sectorId).find(p => p.id === planetId)
+    if (planet && planet.ownerId === currentState.player.id) {
+      dbOps.updatePlanetPort(planetId, true, JSON.stringify(prices))
+      currentState.lastMessage = 'Port prices updated.'
+    }
+    return returnSerializedScene()
+  })
+
+  ipcMain.handle('rename-ship', async (event, newName: string) => {
+    if (!currentState.player) return
     const db = getDb()
-    const player = db.prepare('SELECT * FROM players WHERE name = ?').get(name) as any
-    
-    if (!player) {
-      currentState.lastMessage = `Pilot "${name}" not found.`
-      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
-    }
-
-    dbOps.updatePlayerLastLogin(player.id)
-    const sectorData = dbOps.getSector(player.sectorId)
-    const planets = dbOps.getPlanetsBySector(player.sectorId)
-
-    currentState.player = {
-      ...player,
-      hp: player.hp || 100,
-      maxHp: player.maxHp || 100,
-      shields: player.shields || 0,
-      faction: player.faction as any,
-      weaponLevel: player.weaponLevel || 1,
-      shieldLevel: player.shieldLevel || 1,
-      engineLevel: player.engineLevel || 1,
-      kills: player.kills || 0,
-      companyId: player.companyId
-    }
-    currentState.currentSector = {
-      ...sectorData,
-      warps: JSON.parse(sectorData.warps)
-    }
-    currentState.currentPlanets = planets
-    currentState.currentScene = 'bridge'
-    currentState.lastMessage = `Welcome back, Captain ${player.name}.`
-    dbOps.insertGlobalEvent('PLAYER_LOGIN', `Captain ${player.name} has resumed command.`)
-    syncCompanyData()
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties, currentState.currentCompany, currentState.companyMembers, currentState.availableCompanies, currentState.companyChatMessages, currentState.companyAlliances, currentState.playerCargo, getHudStats())
+    db.prepare('UPDATE player_ships SET name = ? WHERE playerId = ?').run(newName, currentState.player.id)
+    currentState.lastMessage = `Ship renamed to: ${newName}`
+    return returnSerializedScene()
   })
 
   createWindow()

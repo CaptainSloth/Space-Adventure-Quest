@@ -3,6 +3,7 @@ import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatS
 import { getPortInventory } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
 import { dbOps } from '../../main/db'
+import { SHIP_TEMPLATES } from '../ships'
 
 export type SceneRegistry = {
   [K in SceneId]?: (state: GameState) => SceneViewModel
@@ -43,7 +44,11 @@ export const toSerializable = (
   companyChatMessages?: any[],
   companyAlliances?: any[],
   playerCargo?: any[],
-  hudStats?: any | null
+  hudStats?: any | null,
+  stocks?: any[],
+  playerPortfolio?: any[],
+  shipyardStock?: any[],
+  stockHistory?: number[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -64,6 +69,10 @@ export const toSerializable = (
     companyAlliances,
     playerCargo,
     hudStats,
+    stocks,
+    playerPortfolio,
+    shipyardStock,
+    stockHistory,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -129,37 +138,44 @@ const registry: SceneRegistry = {
       { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
       { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
       { label: 'Rankings', key: 'K', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
+      { label: 'Stock Market', key: 'G', action: async (s) => ({ ...s, currentScene: 'stock_market' }) },
       { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },
       { label: 'Faction HQ', key: 'H', action: async (s) => ({ ...s, currentScene: 'faction_hq' }) },
       { label: 'Comm Link (Chat)', key: 'M', action: async (s) => ({ ...s, currentScene: 'messages' }) },
       { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
     ]
   }),
-  shipyard: (state) => ({
-    title: '`%eGALACTIC SHIP SHOWROOM` %7',
-    description: `Welcome to the showroom. Browse our selection of specialized hulls.`,
-    options: [
-      { label: 'Buy Wasp Scout (2500 cr)', key: '1', action: async (s) => {
-        if (s.player!.credits >= 2500) {
-          return { ...s, player: { ...s.player!, credits: s.player!.credits - 2500, shipId: 'scout_wasp' }, lastMessage: 'New ship: Wasp Scout.' }
-        }
-        return { ...s, lastMessage: 'Not enough credits!' }
-      }},
-      { label: 'Buy Hauler (5000 cr)', key: '2', action: async (s) => {
-        if (s.player!.credits >= 5000) {
-          return { ...s, player: { ...s.player!, credits: s.player!.credits - 5000, shipId: 'trader_hauler' }, lastMessage: 'New ship: Hauler.' }
-        }
-        return { ...s, lastMessage: 'Not enough credits!' }
-      }},
-      { label: 'Buy Falcon Frigate (15000 cr)', key: '3', action: async (s) => {
-        if (s.player!.credits >= 15000) {
-          return { ...s, player: { ...s.player!, credits: s.player!.credits - 15000, shipId: 'frigate_falcon' }, lastMessage: 'New ship: Falcon Frigate.' }
-        }
-        return { ...s, lastMessage: 'Not enough credits!' }
-      }},
-      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+  shipyard: (state) => {
+    const stock = state.shipyardStock || []
+    return {
+      title: '`%eGALACTIC SHIP SHOWROOM` %7',
+      description: `Welcome to the showroom. Our inventory shifts frequently.
+Current commissioned hulls:`,
+      options: [
+        ...stock.map((ship, i) => ({
+          label: `${ship.isLegendary ? '`%b[LEGENDARY] ' : ''}${ship.instanceName} (${ship.cost} cr) - Holds: ${ship.holds}, Shields: ${ship.shields}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            if (s.player!.credits >= ship.cost) {
+              return { 
+                ...s, 
+                player: { 
+                  ...s.player!, 
+                  credits: s.player!.credits - ship.cost, 
+                  shipId: ship.instanceName,
+                  maxTurns: 75 + (ship.tier * 5)
+                }, 
+                pendingShipPurchase: ship,
+                lastMessage: `New ship commissioned: ${ship.instanceName}.` 
+              }
+            }
+            return { ...s, lastMessage: 'Insufficient credits for this vessel!' }
+          }
+        })),
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   station_services: (state) => {
     const weaponCost = (state.player?.weaponLevel || 1) * 1000
     const shieldCost = (state.player?.shieldLevel || 1) * 1000
@@ -188,6 +204,7 @@ Maintenance and upgrade protocols active.`,
           }
           return { ...s, lastMessage: 'Not enough credits!' }
         }},
+        { label: 'Rename Ship', key: 'R', action: async (s) => s },
         { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
       ]
     }
@@ -337,6 +354,9 @@ ${r?.alignment.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.va
       { label: 'Add 5000 Credits', key: 'C', action: async (s) => {
         return { ...s, player: { ...s.player!, credits: s.player!.credits + 5000 }, lastMessage: 'Credits deposited.' }
       }},
+      { label: 'Trigger Galactic Tick', key: 'K', action: async (s) => {
+        return { ...s, lastMessage: 'Requesting manual galactic economic tick...' }
+      }},
       { label: 'Refill Turns', key: 'T', action: async (s) => {
         return { ...s, player: { ...s.player!, turns: s.player!.maxTurns }, lastMessage: 'Energy banks replenished.' }
       }},
@@ -355,9 +375,168 @@ ${r?.alignment.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.va
       { label: 'Alignment: HERO', key: 'H', action: async (s) => ({ ...s, player: { ...s.player!, alignment: 500 }, lastMessage: 'Alignment set to Heroic.' }) },
       { label: 'Alignment: VILLAIN', key: 'V', action: async (s) => ({ ...s, player: { ...s.player!, alignment: -500 }, lastMessage: 'Alignment set to Villainous.' }) },
       { label: 'NPC Editor', key: 'N', action: async (s) => ({ ...s, currentScene: 'admin_npcs' }) },
+      { label: 'Ship Editor', key: 'Y', action: async (s) => ({ ...s, currentScene: 'admin_ships' }) },
       { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
+  admin_ships: (state) => {
+    const builder = state.adminBuilder || { step: 'menu' }
+    const templates = dbOps.getShipTemplates() as any[]
+    const modifiers = dbOps.getShipModifiers() as any[]
+
+    if (builder.step === 'menu') {
+      return {
+        title: '`%1ADMIN: SHIP EXPANSION EDITOR` %7',
+        description: `Manage the galactic fleet definitions.
+Templates: \`%f${templates.length}\` %7 | Modifiers: \`%f${modifiers.length}\` %7`,
+        options: [
+          { label: 'Manage Templates', key: 'T', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'template_list' } }) },
+          { label: 'Manage Modifiers', key: 'M', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'modifier_list' } }) },
+          { label: 'Build Custom Ship', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'build_template' } }) },
+          { label: 'Back to Admin', key: 'A', action: async (s) => ({ ...s, currentScene: 'admin', adminBuilder: undefined }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'template_list') {
+      return {
+        title: '`%1ADMIN: SHIP TEMPLATES` %7',
+        description: 'Existing base hulls in the database:',
+        options: [
+          ...templates.map((t, i) => ({
+            label: `[TIER ${t.tier}] ${t.name} (H:${t.baseHolds} S:${t.baseShields})`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, lastMessage: `Editing template ${t.id} not yet fully implemented (DB delete available).` })
+          })),
+          { label: 'Delete Last Template', key: 'D', action: async (s) => {
+            const last = templates[templates.length - 1]
+            if (last) dbOps.deleteShipTemplate(last.id)
+            return { ...s, lastMessage: 'Removed latest template.' }
+          }},
+          { label: 'Back to Menu', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'modifier_list') {
+      return {
+        title: '`%1ADMIN: SHIP MODIFIERS` %7',
+        description: 'Existing prefixes and suffixes in the database:',
+        options: [
+          ...modifiers.map((m, i) => ({
+            label: `[${m.type.toUpperCase()}] ${m.name} (H:${m.holdsMod}x S:${m.shieldsMod}x)`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, lastMessage: `Editing modifier ${m.name} not yet fully implemented.` })
+          })),
+          { label: 'Delete Last Modifier', key: 'D', action: async (s) => {
+            const last = modifiers[modifiers.length - 1]
+            if (last) dbOps.deleteShipModifier(last.id)
+            return { ...s, lastMessage: 'Removed latest modifier.' }
+          }},
+          { label: 'Back to Menu', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'build_template') {
+      return {
+        title: '`%1BUILDER: STEP 1` %7',
+        description: 'Select a base template for the new commissioned hull:',
+        options: [
+          ...templates.map((t, i) => ({
+            label: `Base: ${t.name}`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, adminBuilder: { ...builder, templateId: t.id, step: 'build_prefix' } })
+          })),
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'build_prefix') {
+      const prefixes = modifiers.filter(m => m.type === 'prefix')
+      return {
+        title: '`%1BUILDER: STEP 2` %7',
+        description: 'Select an optional Prefix modifier:',
+        options: [
+          { label: 'None (Standard)', key: '0', action: async (s) => ({ ...s, adminBuilder: { ...builder, prefixId: undefined, step: 'build_suffix' } }) },
+          ...prefixes.map((m, i) => ({
+            label: `Prefix: ${m.name} (${m.description})`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, adminBuilder: { ...builder, prefixId: m.id, step: 'build_suffix' } })
+          })),
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'build_suffix') {
+      const suffixes = modifiers.filter(m => m.type === 'suffix')
+      return {
+        title: '`%1BUILDER: STEP 3` %7',
+        description: 'Select an optional Suffix modifier:',
+        options: [
+          { label: 'None (Standard)', key: '0', action: async (s) => ({ ...s, adminBuilder: { ...builder, suffixId: undefined, step: 'review' } }) },
+          ...suffixes.map((m, i) => ({
+            label: `Suffix: ${m.name} (${m.description})`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, adminBuilder: { ...builder, suffixId: m.id, step: 'review' } })
+          })),
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'review') {
+      const template = templates.find(t => t.id === builder.templateId)
+      const prefix = modifiers.find(m => m.id === builder.prefixId)
+      const suffix = modifiers.find(m => m.id === builder.suffixId)
+      
+      const holds = Math.floor(template.baseHolds * (prefix?.holdsMod || 1) * (suffix?.holdsMod || 1))
+      const shields = Math.floor(template.baseShields * (prefix?.shieldsMod || 1) * (suffix?.shieldsMod || 1))
+      const fighters = Math.floor(template.baseFighters * (prefix?.fightersMod || 1) * (suffix?.fightersMod || 1))
+      const name = `${prefix ? prefix.name + ' ' : ''}${template.name}${suffix ? ' ' + suffix.name : ''}`
+
+      return {
+        title: '`%1BUILDER: FINAL REVIEW` %7',
+        description: `
+Vessel Name: \`%f${name}\` %7
+Template: ${template.name}
+Holds: \`%e${holds}\` %7
+Shields: \`%e${shields}\` %7
+Fighters: \`%e${fighters}\` %7
+
+Commission this hull instantly?`,
+        options: [
+          { label: 'COMMISSION HULL', key: 'C', action: async (s) => {
+            return {
+              ...s,
+              player: { ...s.player!, shipId: name, maxTurns: 75 + (template.tier * 5) },
+              pendingShipPurchase: {
+                templateId: template.id,
+                instanceName: name,
+                holds,
+                shields,
+                fighters,
+                cost: 0,
+                tier: template.tier
+              },
+              adminBuilder: undefined,
+              lastMessage: `Admin Build Complete: ${name} commissioned.`
+            }
+          }},
+          { label: 'Start Over', key: 'R', action: async (s) => ({ ...s, adminBuilder: { step: 'menu' } }) },
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: undefined, currentScene: 'admin' }) }
+        ]
+      }
+    }
+
+    return {
+      title: 'ERROR',
+      description: 'Invalid builder state.',
+      options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, adminBuilder: { step: 'menu' } }) }]
+    }
+  },
   admin_npcs: (state) => {
     const npcs = dbOps.getNpcsInSector(state.player!.sectorId) as any[]
     return {
@@ -376,6 +555,75 @@ ${npcs.map((n, i) => `${i + 1}. \`%f${n.name}\` %7 - Pers: ${n.personality}`).jo
           }
         })),
         { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  stock_market: (state) => {
+    return {
+      title: '`%eGALACTIC STOCK EXCHANGE` %7',
+      description: `Welcome to the exchange. Speculate on the growth of the galaxy.
+      
+CURRENT MARKET LISTINGS:
+${state.stocks?.map((s, i) => `${i + 1}. \`%b${s.symbol.padEnd(5)}\` %7 - ${s.name.padEnd(25)} : \`%e${s.price.toFixed(2)}\` %7 (${s.price >= s.prevPrice ? '%a▲' : '%1▼'}%7)`).join('\n')}
+
+YOUR PORTFOLIO:
+${state.playerPortfolio?.length ? state.playerPortfolio.map(p => `- \`%b${p.symbol}\` %7: ${p.quantity} shares (Avg: ${p.avgPrice.toFixed(2)})`).join('\n') : 'No active investments.'}`,
+      options: [
+        ...state.stocks?.map((s, i) => ({
+          label: `Trade ${s.symbol}`,
+          key: (i + 1).toString(),
+          action: async (st: GameState) => ({ ...st, currentScene: 'stock_details', lastMessage: `Loading data for ${s.symbol}...`, selectedPlanetId: s.symbol }) // Reuse selectedPlanetId for stock symbol
+        })) || [],
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
+  stock_details: (state) => {
+    const symbol = state.selectedPlanetId // Symbol stored here
+    const stock = state.stocks.find(s => s.symbol === symbol)
+    const portfolio = state.playerPortfolio.find(p => p.symbol === symbol)
+    const history = (state as any).stockHistory || []
+    
+    if (!stock) return { title: 'ERROR', description: 'Stock not found', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...st, currentScene: 'stock_market' }) }] } as any
+
+    // Draw Chart (Placeholder - actual rendering happens in App.tsx but we'll format it here for description)
+    let chartStr = '\n`%bPRICE HISTORY:`%7\n'
+    if (history.length > 1) {
+      // We pass the raw history to App.tsx which handles the complex ASCII drawing
+      chartStr += '[ASCII_CHART_PENDING]\n'
+    } else {
+      chartStr += '(No historical data yet)\n'
+    }
+
+    return {
+      title: `\`%eEXCHANGE: ${stock.name}\` %7`,
+      description: `
+Symbol: \`%b${stock.symbol}\` %7
+Current Price: \`%e${stock.price.toFixed(2)}\` %7
+Previous: ${stock.prevPrice.toFixed(2)}
+Volatility: ${(stock.volatility * 100).toFixed(0)}%
+
+${stock.description}
+${chartStr}
+YOUR POSITION:
+Shares: \`%f${portfolio?.quantity || 0}\` %7
+Avg Price: ${portfolio?.avgPrice.toFixed(2) || '0.00'}
+Value: \`%e${((portfolio?.quantity || 0) * stock.price).toFixed(2)}\` %7
+`,
+      options: [
+        { label: 'Buy 10 Shares', key: '1', action: async (s) => {
+          if (s.player!.credits >= stock.price * 10) {
+            return { ...s, lastMessage: `Requesting purchase of 10 ${symbol}...` }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: 'Sell All Shares', key: 'S', action: async (s) => {
+          if (portfolio && portfolio.quantity > 0) {
+            return { ...s, lastMessage: `Requesting sale of ${portfolio.quantity} ${symbol}...` }
+          }
+          return { ...s, lastMessage: 'No shares to sell!' }
+        }},
+        { label: 'Back to Exchange', key: 'B', action: async (s) => ({ ...s, currentScene: 'stock_market' }) }
       ]
     }
   },
@@ -440,6 +688,7 @@ Welcome to the surface.`,
           }
         }] : []),
         { label: 'Planet Management', key: 'M', action: async (s) => ({ ...s, currentScene: 'planet_manage' }) },
+        ...(planet?.hasPort ? [{ label: 'Trading Port', key: 'P', action: async (s: GameState) => ({ ...s, currentScene: 'planet_trade' }) }] : []),
         { label: 'Return to Orbit', key: 'R', action: async (s) => ({ ...s, currentScene: 'bridge', selectedPlanetId: null }) }
       ]
     }
@@ -460,9 +709,13 @@ Welcome to the surface.`,
       title: `\`%eMANAGE: ${planet?.name}\` %7`,
       description: `Tax Rate: \`%f${(planet?.taxRate || 0) * 100}%\` %7 | Access: \`%b${planet?.accessPolicy?.toUpperCase() || 'OPEN'}\` %7
 Miners: \`%f${(planet?.oreMiners || 0) + (planet?.fuelMiners || 0) + (planet?.equipmentMiners || 0)}\` %7
-Defense: \`%c${planet?.fighters || 0}\` %7 Fighters, \`%c${planet?.shields || 0}%\` %7 Shields`,
+Defense: \`%c${planet?.fighters || 0}\` %7 Fighters, \`%c${planet?.shields || 0}%\` %7 Shields
+Port Status: ${planet?.hasPort ? '`%aOPERATIONAL` %7' : '`%1OFFLINE` %7'}`,
       options: [
-        { label: 'View Daily Report', key: 'R', action: async (s) => ({ ...s, lastMessage: 'Daily report: Population grew by 150. Tax collected: 15 credits.' }) },
+        { label: 'View Daily Report', key: 'R', action: async (s) => {
+          const report = dbOps.getPlanetReport(planet!.id)
+          return { ...s, lastMessage: report ? report.report : 'No report available for this cycle.' }
+        }},
         { label: 'Set Tax Rate', key: 'T', action: async (s) => {
           const rates = [0.05, 0.10, 0.15, 0.20, 0.25]
           const currentIdx = rates.indexOf(planet!.taxRate)
@@ -476,15 +729,40 @@ Defense: \`%c${planet?.fighters || 0}\` %7 Fighters, \`%c${planet?.shields || 0}
           dbOps.updatePlanetName(planet!.id, nextName)
           return { ...s, lastMessage: `Planet renamed to ${nextName}.` }
         }},
-        { label: 'Toggle Access', key: 'A', action: async (s) => {
-          const policies = ['open', 'faction', 'locked']
-          const currentIdx = policies.indexOf(planet!.accessPolicy || 'open')
-          const nextPolicy = policies[(currentIdx + 1) % policies.length]
-          dbOps.updatePlanetAccess(planet!.id, nextPolicy)
-          return { ...s, lastMessage: `Access policy set to ${nextPolicy.toUpperCase()}.` }
-        }},
+        ...(!planet?.hasPort ? [{ 
+          label: 'Establish Port (10,000 cr)', 
+          key: 'P', 
+          action: async (s: GameState) => {
+            if (s.player!.credits >= 10000) {
+              return { ...s, lastMessage: `Requesting port construction for ${planet?.id}` }
+            }
+            return { ...s, lastMessage: 'Not enough credits to build a port!' }
+          }
+        }] : []),
         { label: 'Manage Mining', key: 'M', action: async (s) => ({ ...s, currentScene: 'planet_mining' }) },
-        { label: 'Deploy Defenses', key: 'D', action: async (s) => ({ ...s, lastMessage: 'Defense deployment not yet implemented' }) },
+        { label: 'Back to Surface', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_surface' }) }
+      ]
+    }
+  },
+  planet_trade: (state) => {
+    const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
+    const prices = planet?.portPrices ? JSON.parse(planet.portPrices) : { ore: 10, fuel: 20, equipment: 100 }
+    
+    return {
+      title: `\`%cPLANET PORT: ${planet?.name}\` %7`,
+      description: `Welcome to the local trading hub. Credits: \`%f${state.player?.credits}\` %7
+      
+Current Prices:
+ORE: Buy: ${prices.ore} | Sell: ${prices.ore + 2} [DATA:ore:${prices.ore}:${prices.ore + 2}]
+FUEL: Buy: ${prices.fuel} | Sell: ${prices.fuel + 4} [DATA:fuel:${prices.fuel}:${prices.fuel + 4}]
+EQUIPMENT: Buy: ${prices.equipment} | Sell: ${prices.equipment + 20} [DATA:equipment:${prices.equipment}:${prices.equipment + 20}]`,
+      options: [
+        { label: 'Buy Ore', key: 'O', action: async (s) => s },
+        { label: 'Buy Fuel', key: 'F', action: async (s) => s },
+        { label: 'Buy Equipment', key: 'E', action: async (s) => s },
+        { label: 'Sell Ore', key: 'R', action: async (s) => s },
+        { label: 'Sell Fuel', key: 'U', action: async (s) => s },
+        { label: 'Sell Equipment', key: 'Q', action: async (s) => s },
         { label: 'Back to Surface', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_surface' }) }
       ]
     }
@@ -742,41 +1020,75 @@ ${log.slice(-5).join('\n')}
       options: hasLooted ? [
         { label: 'Return to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge', combat: null, lastMessage: null }) }
       ] : isOver ? [
-        ...(defender.shields <= 0 ? [{ 
-          label: 'Loot Disabled Ship', 
-          key: 'L', 
-          action: async (s) => {
-            const loot = Math.floor(Math.random() * 500) + 100
-            dbOps.updatePlayerCredits(s.player!.id, loot)
-            
-            let bountyMsg = ''
-            if (defender.isNpc) {
-              if (defender.id.startsWith('blockade_')) {
-                const sectorId = parseInt(defender.id.split('_')[1])
-                const deployments = dbOps.getSectorDeployments(sectorId)
-                const blockade = deployments.find(d => d.type === 'fighter' && d.playerId !== s.player!.id)
-                if (blockade) dbOps.removeSectorDeployment(blockade.id)
+        ...(defender.shields <= 0 ? [
+          { 
+            label: 'Loot Disabled Ship', 
+            key: 'L', 
+            action: async (s) => {
+              const loot = Math.floor(Math.random() * 500) + 100
+              dbOps.updatePlayerCredits(s.player!.id, loot)
+              
+              let bountyMsg = ''
+              if (defender.isNpc) {
+                if (defender.id.startsWith('blockade_')) {
+                  const sectorId = parseInt(defender.id.split('_')[1])
+                  const deployments = dbOps.getSectorDeployments(sectorId)
+                  const blockade = deployments.find(d => d.type === 'fighter' && d.playerId !== s.player!.id)
+                  if (blockade) dbOps.removeSectorDeployment(blockade.id)
+                } else {
+                  dbOps.setNpcCooldown(defender.id, new Date().toISOString())
+                  const completed = dbOps.updateBountyProgress(s.player!.id, 'kill', defender.id, s.player!.companyId)
+                  if (completed) bountyMsg = '`%bBOUNTY COMPLETED!` %7'
+                }
               } else {
-                dbOps.setNpcCooldown(defender.id, new Date().toISOString())
-                const completed = dbOps.updateBountyProgress(s.player!.id, 'kill', defender.id, s.player!.companyId)
-                if (completed) bountyMsg = '`%bBOUNTY COMPLETED!` %7'
+                dbOps.insertGlobalEvent('PLAYER_KILLED', `Captain ${attacker.name} defeated Captain ${defender.name} in Sector ${s.player!.sectorId}.`)
               }
-            } else {
-              dbOps.insertGlobalEvent('PLAYER_KILLED', `Captain ${attacker.name} defeated Captain ${defender.name} in Sector ${s.player!.sectorId}.`)
+              
+              return { 
+                ...s, 
+                player: { 
+                  ...s.player!, 
+                  credits: s.player!.credits + loot,
+                  alignment: s.player!.alignment + (defender.isNpc ? 10 : -10),
+                  kills: s.player!.kills + 1
+                },
+                lastMessage: `Victory! You looted ${loot} credits from ${defender.name}. ${bountyMsg}` 
+              }
+            } 
+          },
+          {
+            label: 'Board & Attempt Capture',
+            key: 'C',
+            action: async (s) => {
+              const captureChance = 0.2 + (s.player!.level * 0.05)
+              const success = Math.random() < captureChance
+              if (success) {
+                return {
+                  ...s,
+                  lastMessage: `SUCCESS! Your boarding party has secured the \`%f${defender.name}\` %7. It is now yours.`,
+                  // We'll signal the main process to swap the ship using the defender's ship template/stats
+                  pendingShipPurchase: {
+                    templateId: defender.id.includes('blockade') ? 'falcon' : 'vulture',
+                    instanceName: `Captured ${defender.name}`,
+                    holds: 15,
+                    shields: 50,
+                    fighters: 5,
+                    cost: 0,
+                    tier: 3
+                  }
+                }
+              } else {
+                return {
+                  ...s,
+                  lastMessage: 'FAILURE! The enemy crew repelled your boarding party and scuttled the ship. It exploded, damaging your hull!',
+                  player: { ...s.player!, shields: Math.max(0, s.player!.shields - 50) },
+                  combat: null,
+                  currentScene: 'bridge'
+                }
+              }
             }
-            
-            return { 
-              ...s, 
-              player: { 
-                ...s.player!, 
-                credits: s.player!.credits + loot,
-                alignment: s.player!.alignment + (defender.isNpc ? 10 : -10),
-                kills: s.player!.kills + 1
-              },
-              lastMessage: `Victory! You looted ${loot} credits from ${defender.name}. ${bountyMsg}` 
-            }
-          } 
-        }] : [{ 
+          }
+        ] : [{ 
           label: 'Emergency Escape', 
           key: 'E', 
           action: async (s) => ({ ...s, currentScene: 'death', combat: null }) 

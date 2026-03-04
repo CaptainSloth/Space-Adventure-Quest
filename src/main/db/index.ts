@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync } from 'fs'
 import { generateGalaxy } from '../../engine/galaxy'
+import { SHIP_TEMPLATES, SHIP_PREFIXES, SHIP_SUFFIXES, LEGENDARY_SHIPS } from '../../engine/ships'
 
 let db: Database.Database
 
@@ -60,7 +61,7 @@ export function initDb(): void {
             sectorId: s.id,
             name: `Planet ${s.id}-${j + 1}`,
             type: type,
-            population: 0,
+            population: Math.floor(Math.random() * 1500) + 500, // Start with some people!
             maxPopulation: type === 'terran' ? 100000 : 10000,
             taxRate: 0.1,
             createdAt: new Date().toISOString()
@@ -161,6 +162,102 @@ export function initDb(): void {
       );
     `)
   }
+
+  // Check for stocks table
+  const hasStocks = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stocks'").get()
+  if (!hasStocks) {
+    console.log('Migrating: Adding stock market tables...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS stocks (
+        symbol TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        prevPrice REAL NOT NULL,
+        volatility REAL DEFAULT 0.05,
+        description TEXT
+      );
+      CREATE TABLE IF NOT EXISTS player_stocks (
+        playerId TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        quantity INTEGER DEFAULT 0,
+        avgPrice REAL DEFAULT 0,
+        PRIMARY KEY (playerId, symbol)
+      );
+    `)
+  }
+
+  // Check for planet port columns
+  const planetCols = db.prepare("PRAGMA table_info(planets)").all() as any[]
+  if (!planetCols.some(col => col.name === 'hasPort')) {
+    console.log('Migrating: Adding port columns to planets...')
+    db.transaction(() => {
+      db.prepare("ALTER TABLE planets ADD COLUMN hasPort BOOLEAN DEFAULT FALSE").run()
+      db.prepare("ALTER TABLE planets ADD COLUMN portPrices TEXT").run()
+    })()
+  }
+
+  // Check for stock history
+  const hasHistory = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_history'").get()
+  if (!hasHistory) {
+    db.exec('CREATE TABLE stock_history (symbol TEXT NOT NULL, price REAL NOT NULL, recordedAt TEXT NOT NULL)')
+  }
+
+  // Ship System Migrations
+  const hasTemplates = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ship_templates'").get()
+  if (!hasTemplates) {
+    console.log('Migrating: Adding ship template tables...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ship_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        baseHolds INTEGER DEFAULT 5,
+        baseShields INTEGER DEFAULT 10,
+        baseFighters INTEGER DEFAULT 0,
+        baseCost INTEGER DEFAULT 500,
+        description TEXT,
+        tier INTEGER DEFAULT 1,
+        isCustom BOOLEAN DEFAULT FALSE
+      );
+      CREATE TABLE IF NOT EXISTS ship_modifiers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        holdsMod REAL DEFAULT 1.0,
+        shieldsMod REAL DEFAULT 1.0,
+        fightersMod REAL DEFAULT 1.0,
+        costMod REAL DEFAULT 1.0,
+        description TEXT
+      );
+    `)
+  }
+
+  // Seed Ships if empty
+  const templateCount = db.prepare('SELECT count(*) as count FROM ship_templates').get().count
+  if (templateCount === 0) {
+    console.log('Seeding initial ship templates and modifiers...')
+    const insertT = db.prepare('INSERT INTO ship_templates (id, name, baseHolds, baseShields, baseFighters, baseCost, description, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    const insertM = db.prepare('INSERT INTO ship_modifiers (name, type, holdsMod, shieldsMod, fightersMod, costMod, description) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    
+    db.transaction(() => {
+      SHIP_TEMPLATES.forEach((t: any) => insertT.run(t.id, t.name, t.baseHolds, t.baseShields, t.baseFighters, t.baseCost, t.description, t.tier))
+      SHIP_PREFIXES.forEach((m: any) => insertM.run(m.name, 'prefix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
+      SHIP_SUFFIXES.forEach((m: any) => insertM.run(m.name, 'suffix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
+    })()
+  }
+
+  // Initialize Stocks
+  const stockCount = db.prepare('SELECT count(*) as count FROM stocks').get().count
+  if (stockCount === 0) {
+    console.log('Initializing stock market data...')
+    const initialStocks = [
+      { symbol: 'ORE', name: 'Intergalactic Ore Corp', price: 100, volatility: 0.05, desc: 'Primary supplier of raw building materials.' },
+      { symbol: 'FUEL', name: 'Nova Energy Systems', price: 150, volatility: 0.08, desc: 'Monopolizing the transwarp fuel market.' },
+      { symbol: 'EQP', name: 'Atlas Equipment', price: 500, volatility: 0.12, desc: 'High-tech ship components and weaponry.' },
+      { symbol: 'PLAN', name: 'Terran Terraforming', price: 1200, volatility: 0.04, desc: 'Real estate and planetary development.' }
+    ]
+    const stmt = db.prepare('INSERT INTO stocks (symbol, name, price, prevPrice, volatility, description) VALUES (?, ?, ?, ?, ?, ?)')
+    initialStocks.forEach(s => stmt.run(s.symbol, s.name, s.price, s.price, s.volatility, s.desc))
+  }
 }
 
 export function getDb(): Database.Database {
@@ -208,6 +305,44 @@ export const dbOps = {
       SET oreMiners = ?, fuelMiners = ?, equipmentMiners = ? 
       WHERE id = ?
     `).run(ore, fuel, equipment, planetId)
+  },
+  updatePlanetPopulation: (planetId: string, amount: number) => {
+    return db.prepare('UPDATE planets SET population = population + ? WHERE id = ?').run(amount, planetId)
+  },
+  growAllPlanets: () => {
+    const growthRates: Record<string, number> = {
+      'terran': 0.05,
+      'ocean': 0.03,
+      'desert': 0.01,
+      'ice': 0.01,
+      'volcanic': 0.005,
+      'gas_giant': 0,
+      'barren': 0.005
+    }
+    const planets = db.prepare('SELECT id, type, population, maxPopulation, ownerId, taxRate FROM planets').all() as any[]
+    
+    db.transaction(() => {
+      planets.forEach(p => {
+        const rate = growthRates[p.type] || 0.01
+        const growth = Math.floor(Math.max(10, p.population * rate))
+        const newPop = Math.min(p.maxPopulation, p.population + growth)
+        
+        let taxCollected = 0
+        if (p.ownerId && p.population > 0) {
+          taxCollected = Math.floor(p.population * 0.1 * p.taxRate)
+          db.prepare('UPDATE players SET credits = credits + ? WHERE id = ?').run(taxCollected, p.ownerId)
+        }
+        
+        db.prepare('UPDATE planets SET population = ?, credits = credits + ? WHERE id = ?').run(newPop, taxCollected, p.id)
+        
+        // Log real report
+        const report = `Tick Report: Pop +${growth} (Total: ${newPop}). Taxes: ${taxCollected} cr.`
+        db.prepare("INSERT INTO planet_reports (planetId, report, createdAt) VALUES (?, ?, datetime('now'))").run(p.id, report)
+      })
+    })()
+  },
+  getPlanetReport: (planetId: string) => {
+    return db.prepare('SELECT report FROM planet_reports WHERE planetId = ? ORDER BY id DESC LIMIT 1').get(planetId)
   },
   updatePlanetTaxRate: (planetId: string, taxRate: number) => {
     return db.prepare('UPDATE planets SET taxRate = ? WHERE id = ?').run(taxRate, planetId)
@@ -295,7 +430,7 @@ export const dbOps = {
     `).all(companyId, limit).reverse()
   },
   createAlliance: (idA: string, idB: string) => {
-    return db.prepare('INSERT INTO company_alliances (companyA, companyB, formedAt) VALUES (?, ?, datetime("now"))').run(idA, idB)
+    return db.prepare("INSERT INTO company_alliances (companyA, companyB, formedAt) VALUES (?, ?, datetime('now'))").run(idA, idB)
   },
   getAlliances: (companyId: string) => {
     return db.prepare('SELECT * FROM company_alliances WHERE companyA = ? OR companyB = ?').all(companyId, companyId)
@@ -441,5 +576,93 @@ export const dbOps = {
   },
   getAvailableCompanies: () => {
     return db.prepare('SELECT * FROM companies').all()
+  },
+  getStocks: () => {
+    return db.prepare('SELECT * FROM stocks').all()
+  },
+  updateStockPrices: () => {
+    const stocks = db.prepare('SELECT * FROM stocks').all() as any[]
+    const stmt = db.prepare('UPDATE stocks SET price = ?, prevPrice = ? WHERE symbol = ?')
+    const histStmt = db.prepare("INSERT INTO stock_history (symbol, price, recordedAt) VALUES (?, ?, datetime('now'))")
+    
+    db.transaction(() => {
+      stocks.forEach(s => {
+        // Record history before update
+        histStmt.run(s.symbol, s.price)
+        
+        const change = 1 + (Math.random() * s.volatility * 2 - s.volatility)
+        const newPrice = Math.max(10, s.price * change)
+        stmt.run(newPrice, s.price, s.symbol)
+      })
+    })()
+  },
+  getPlayerStocks: (playerId: string) => {
+    return db.prepare(`
+      SELECT ps.*, s.name, s.price as currentPrice 
+      FROM player_stocks ps 
+      JOIN stocks s ON ps.symbol = s.symbol 
+      WHERE ps.playerId = ?
+    `).all(playerId)
+  },
+  tradeStock: (playerId: string, symbol: string, quantity: number, price: number) => {
+    const isBuy = quantity > 0
+    return db.transaction(() => {
+      if (isBuy) {
+        db.prepare(`
+          INSERT INTO player_stocks (playerId, symbol, quantity, avgPrice)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(playerId, symbol) DO UPDATE SET
+            avgPrice = (avgPrice * quantity + ? * ?) / (quantity + ?),
+            quantity = quantity + ?
+        `).run(playerId, symbol, quantity, price, price, quantity, quantity, quantity)
+      } else {
+        const current = db.prepare('SELECT quantity FROM player_stocks WHERE playerId = ? AND symbol = ?').get(playerId, symbol) as any
+        if (!current || current.quantity < Math.abs(quantity)) throw new Error('Not enough shares')
+        db.prepare('UPDATE player_stocks SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
+      }
+    })()
+  },
+  createPlayerShip: (playerId: string, ship: any) => {
+    return db.prepare(`
+      INSERT INTO player_ships (playerId, shipDefId, name, shields, maxShields, fighters, holds)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(playerId, ship.templateId, ship.instanceName, ship.shields, ship.shields, ship.fighters, ship.holds)
+  },
+  getPlayerShip: (playerId: string) => {
+    return db.prepare('SELECT * FROM player_ships WHERE playerId = ? ORDER BY id DESC LIMIT 1').get(playerId)
+  },
+  updatePlanetPort: (planetId: string, hasPort: boolean, prices: string) => {
+    return db.prepare('UPDATE planets SET hasPort = ?, portPrices = ? WHERE id = ?').run(hasPort ? 1 : 0, prices, planetId)
+  },
+  insertStockHistory: (symbol: string, price: number) => {
+    return db.prepare("INSERT INTO stock_history (symbol, price, recordedAt) VALUES (?, ?, datetime('now'))").run(symbol, price)
+  },
+  getStockHistory: (symbol: string, limit: number = 20) => {
+    return db.prepare('SELECT price FROM stock_history WHERE symbol = ? ORDER BY recordedAt DESC LIMIT ?').all(symbol, limit).reverse()
+  },
+  getShipTemplates: () => {
+    return db.prepare('SELECT * FROM ship_templates ORDER BY tier ASC, name ASC').all()
+  },
+  addShipTemplate: (template: any) => {
+    return db.prepare(`
+      INSERT INTO ship_templates (id, name, baseHolds, baseShields, baseFighters, baseCost, description, tier, isCustom)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(template.id, template.name, template.baseHolds, template.baseShields, template.baseFighters, template.baseCost, template.description, template.tier)
+  },
+  deleteShipTemplate: (id: string) => {
+    return db.prepare('DELETE FROM ship_templates WHERE id = ?').run(id)
+  },
+  getShipModifiers: (type?: string) => {
+    if (type) return db.prepare('SELECT * FROM ship_modifiers WHERE type = ?').all(type)
+    return db.prepare('SELECT * FROM ship_modifiers').all()
+  },
+  addShipModifier: (mod: any) => {
+    return db.prepare(`
+      INSERT INTO ship_modifiers (name, type, holdsMod, shieldsMod, fightersMod, costMod, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(mod.name, mod.type, mod.holdsMod, mod.shieldsMod, mod.fightersMod, mod.costMod, mod.description)
+  },
+  deleteShipModifier: (id: number) => {
+    return db.prepare('DELETE FROM ship_modifiers WHERE id = ?').run(id)
   }
 }

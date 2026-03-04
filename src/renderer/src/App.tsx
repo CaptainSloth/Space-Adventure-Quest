@@ -24,11 +24,36 @@ interface SceneViewModel {
   companyAlliances?: any[]
   playerCargo?: any[]
   hudStats?: any | null
+  stocks?: any[]
+  playerPortfolio?: any[]
+  shipyardStock?: any[]
 }
 
 interface Notification {
   id: number
   payload: string
+}
+
+const renderAsciiChart = (data: number[]) => {
+  if (!data || data.length < 2) return ''
+  const max = Math.max(...data)
+  const min = Math.min(...data)
+  const range = max - min || 1
+  const height = 5
+  const width = data.length
+  
+  let chart = ''
+  for (let h = height; h >= 0; h--) {
+    let line = ''
+    for (let w = 0; w < width; w++) {
+      const val = data[w]
+      const normalized = Math.round(((val - min) / range) * height)
+      if (normalized === h) line += '%a*%7'
+      else line += ' '
+    }
+    chart += line + '\n'
+  }
+  return chart
 }
 
 const App: React.FC = () => {
@@ -114,19 +139,14 @@ const App: React.FC = () => {
       // @ts-ignore
       newVm = await window.api.invoke('claim-planet', selectedPlanetId)
     } else if (vm?.title.includes('PORT') && /^[o|f|e|r|u|q]$/.test(key.toLowerCase())) {
-       // Reliable Metadata Parsing: [DATA:name:buy:sell]
-       // Fixed regex to support negative numbers and N/A
        const metadataRegex = /\[DATA:(\w+):(-?\d+|N\/A):(-?\d+|N\/A)\]/g
        const buyMap: Record<string, string> = { 'o': 'ore', 'f': 'fuel', 'e': 'equipment' }
        const sellMap: Record<string, string> = { 'r': 'ore', 'u': 'fuel', 'q': 'equipment' }
-       
        const char = key.toLowerCase()
        const isBuy = !!buyMap[char]
        const commodityName = isBuy ? buyMap[char] : sellMap[char]
-       
        let price = 0
        let match
-       // We need to reset the regex lastIndex because of the 'g' flag
        metadataRegex.lastIndex = 0
        while ((match = metadataRegex.exec(vm.description)) !== null) {
          if (match[1] === commodityName) {
@@ -134,24 +154,33 @@ const App: React.FC = () => {
            break
          }
        }
-
        if (price > 0) {
-         try {
-           // @ts-ignore
-           newVm = await window.api.invoke('trade-commodity', commodityName, isBuy ? 1 : -1, price)
-         } catch (e) {
-           console.error('Trade error:', e)
-           // @ts-ignore
-           newVm = await window.api.invoke('get-scene')
-         }
+         // @ts-ignore
+         newVm = await window.api.invoke('trade-commodity', commodityName, isBuy ? 1 : -1, price)
        } else {
          // @ts-ignore
          newVm = await window.api.invoke('execute-action', key)
        }
+    } else if (vm?.title.includes('EXCHANGE:') && (key === '1' || key === 'S')) {
+       const symbol = selectedPlanetId 
+       const stock = vm.stocks?.find(s => s.symbol === symbol)
+       const portfolio = vm.playerPortfolio?.find(p => p.symbol === symbol)
+       if (stock) {
+         if (key === '1') {
+           // @ts-ignore
+           newVm = await window.api.invoke('trade-stock', symbol, 10, stock.price)
+         } else {
+           // @ts-ignore
+           newVm = await window.api.invoke('trade-stock', symbol, -(portfolio?.quantity || 0), stock.price)
+         }
+       }
     } else if (vm?.title.includes('VEX') && key.toLowerCase() === 't') {
-       // Vex Trading (Greedy constant for now)
        // @ts-ignore
        newVm = await window.api.invoke('trade-commodity', 'ore', -1, 30) 
+    } else if (vm?.title.includes('ENGINEERING') && key === 'R') {
+       // Open Rename Form (handled via state in registration form logic)
+       // Just set title check for UI
+       setVm({ ...vm, title: 'SHIP RENAMING' })
     } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
       const company = vm.availableCompanies?.[parseInt(key) - 1]
       if (company) {
@@ -169,12 +198,24 @@ const App: React.FC = () => {
       newVm = await window.api.invoke('execute-action', key)
     }
     
-    setVm(newVm)
-    if (newVm.title.includes('BRIDGE')) {
-      setSelectedPlanetId(null)
-    } else if (newVm.selectedPlanetId !== undefined) {
-      setSelectedPlanetId(newVm.selectedPlanetId)
+    if (newVm) {
+      setVm(newVm)
+      if (newVm.title.includes('BRIDGE')) {
+        setSelectedPlanetId(null)
+      } else if (newVm.selectedPlanetId !== undefined) {
+        setSelectedPlanetId(newVm.selectedPlanetId)
+      }
     }
+    setLoading(false)
+  }
+
+  const handleRenameShip = async () => {
+    if (!name) return
+    setLoading(true)
+    // @ts-ignore
+    const newVm = await window.api.invoke('rename-ship', name)
+    setVm(newVm)
+    setName('')
     setLoading(false)
   }
 
@@ -308,7 +349,9 @@ const App: React.FC = () => {
         )}
 
         <div className="description">
-          {parseSansi(vm.description)}
+          {vm.description.includes('[ASCII_CHART_PENDING]') 
+            ? parseSansi(vm.description.replace('[ASCII_CHART_PENDING]', renderAsciiChart(vm.stockHistory || [])))
+            : parseSansi(vm.description)}
         </div>
 
         {(vm.title.includes('COMM LINK') || vm.title.includes('COMPANY CHAT')) && (
@@ -358,7 +401,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {(vm.title.includes('REGISTRATION') || vm.title.includes('FOUND NEW COMPANY')) && (
+        {(vm.title.includes('REGISTRATION') || vm.title.includes('FOUND NEW COMPANY') || vm.title.includes('SHIP RENAMING')) && (
           <div className="registration-form">
             <p>Enter Name:</p>
             <input 
@@ -370,6 +413,7 @@ const App: React.FC = () => {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   if (vm.title.includes('FOUND NEW COMPANY')) handleCreateCompany()
+                  if (vm.title.includes('SHIP RENAMING')) handleRenameShip()
                 }
               }}
             />
@@ -386,6 +430,8 @@ const App: React.FC = () => {
               handleLogin()
             } else if (vm.title.includes('FOUND NEW COMPANY') && opt.key === 'S') {
               handleCreateCompany()
+            } else if (vm.title.includes('SHIP RENAMING') && opt.key === 'S') {
+              handleRenameShip()
             } else {
               handleAction(opt.key)
             }
