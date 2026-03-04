@@ -133,6 +133,7 @@ const registry: SceneRegistry = {
       { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
       { label: 'Star Cards', key: 'G', action: async (s) => ({ ...s, currentScene: 'card_collection' }) },
       { label: 'Card Shop', key: 'K', action: async (s) => ({ ...s, currentScene: 'card_shop' }) },
+      { label: 'Galactic News', key: 'W', action: async (s) => ({ ...s, currentScene: 'galactic_news' }) },
       { label: 'Rankings', key: 'X', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
       { label: 'Stock Market', key: 'M', action: async (s) => ({ ...s, currentScene: 'stock_market' }) },
       { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },

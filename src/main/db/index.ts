@@ -372,5 +372,32 @@ export const dbOps = {
         }
       })
     })()
+  },
+  getRecentNews: (limit: number = 10) => {
+    return db.prepare('SELECT * FROM news ORDER BY id DESC LIMIT ?').all(limit)
+  },
+  addNewsItem: (headline: string, body: string, category: string = 'GENERAL') => {
+    return db.prepare("INSERT INTO news (headline, body, category, createdAt) VALUES (?, ?, ?, datetime('now'))").run(headline, body, category)
+  },
+  generateDailyNews: () => {
+    // 1. War News (Recent Player Kills)
+    const kills = db.prepare("SELECT count(*) as count FROM events WHERE type = 'PLAYER_KILLED' AND createdAt > datetime('now', '-24 hours')").get().count
+    if (kills > 0) {
+      dbOps.addNewsItem('WAR REPORT: Sector Conflict Rising', `Starfleet confirms ${kills} ship destructions in the last cycle. Tactical alerts issued.`, 'WAR')
+    }
+
+    // 2. Economy News (Stock shifts)
+    const stocks = db.prepare('SELECT symbol, price, prevPrice FROM stocks').all() as any[]
+    if (stocks.length > 0) {
+      const biggest = stocks.reduce((prev, curr) => Math.abs(curr.price - curr.prevPrice) > Math.abs(prev.price - prev.prevPrice) ? curr : prev)
+      const dir = biggest.price > biggest.prevPrice ? 'surged' : 'plummeted'
+      dbOps.addNewsItem(`ECONOMY: ${biggest.symbol} Market Volatility`, `Shares in ${biggest.symbol} have ${dir} significantly. Traders are advised to re-evaluate portfolios.`, 'ECONOMY')
+    }
+
+    // 3. Social
+    const comps = db.prepare("SELECT count(*) as count FROM companies WHERE createdAt > datetime('now', '-24 hours')").get().count
+    if (comps > 0) {
+      dbOps.addNewsItem('GALACTIC GROWTH: New Enterprises', `The Registrar reports ${comps} new company charters issued in the last cycle.`, 'SOCIAL')
+    }
   }
 }

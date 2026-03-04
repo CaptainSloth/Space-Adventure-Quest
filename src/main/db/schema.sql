@@ -313,6 +313,15 @@ CREATE TABLE IF NOT EXISTS resource_nodes (
   isDepleted BOOLEAN DEFAULT FALSE
 );
 
+-- Galactic News
+CREATE TABLE IF NOT EXISTS news (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  headline TEXT NOT NULL,
+  body TEXT NOT NULL,
+  category TEXT DEFAULT 'GENERAL',  -- 'ECONOMY', 'WAR', 'SOCIAL'
+  createdAt TEXT NOT NULL
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,
