@@ -18,8 +18,6 @@ export function initDb(): void {
 
   // Check if galaxy exists
   const sectorCount = db.prepare('SELECT count(*) as count FROM sectors').get().count
-  const planetCount = db.prepare('SELECT count(*) as count FROM planets').get().count
-
   if (sectorCount === 0) {
     console.log('Generating initial galaxy with dynamic ports...')
     const { sectors, planets } = generateGalaxy(500)
@@ -54,6 +52,35 @@ export function initDb(): void {
         const inv = getPortInventory(s.portType)
         updateS.run(JSON.stringify(inv), s.id)
       })
+    })()
+  }
+
+  // Guarantee Home Ports
+  const homeSectors = [1, 500]
+  db.transaction(() => {
+    homeSectors.forEach(id => {
+      const s = db.prepare('SELECT portType, portInventory FROM sectors WHERE id = ?').get(id) as any
+      if (s && (!s.portType || !s.portInventory)) {
+        const type = Math.floor(Math.random() * 5) + 1
+        const inv = getPortInventory(type)
+        db.prepare('UPDATE sectors SET portType = ?, portInventory = ? WHERE id = ?').run(type, JSON.stringify(inv), id)
+        console.log(`Guaranteed port for Home Sector ${id}`)
+      }
+    })
+  })()
+
+  // Seed NPCs if empty
+  const npcCount = db.prepare('SELECT count(*) as count FROM npcs').get().count
+  if (npcCount === 0) {
+    console.log('Seeding initial NPCs...')
+    const initialNpcs = [
+      { id: 'npc_vex', name: 'Captain Vex', title: 'The Smuggler', faction: 'neutral', sectorId: 1, personality: JSON.stringify({ friendliness: 50, greed: 80, aggression: 20, humor: 90 }), scheduleType: 'stationary', desc: 'A sly-looking smuggler with a fast ship and a questionable past.' },
+      { id: 'npc_chen', name: 'Admiral Chen', title: 'Alliance Commander', faction: 'alliance', sectorId: 1, personality: JSON.stringify({ friendliness: 70, greed: 10, aggression: 50, humor: 20 }), scheduleType: 'stationary', desc: 'The stern but fair commander of the Alliance Home Fleet.' },
+      { id: 'npc_krath', name: 'Warlord Krath', title: 'Empire Leader', faction: 'empire', sectorId: 500, personality: JSON.stringify({ friendliness: 10, greed: 90, aggression: 95, humor: 5 }), scheduleType: 'stationary', desc: 'The ruthless leader of the Krath Empire.' }
+    ]
+    const insertNpc = db.prepare('INSERT INTO npcs (id, name, title, faction, sectorId, personality, scheduleType, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    db.transaction(() => {
+      initialNpcs.forEach(n => insertNpc.run(n.id, n.name, n.title, n.faction, n.sectorId, n.personality, n.scheduleType, n.desc))
     })()
   }
 
@@ -108,9 +135,25 @@ export function initDb(): void {
   const hasTemplates = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ship_templates'").get()
   if (!hasTemplates) {
     db.exec(`
-      CREATE TABLE IF NOT EXISTS ship_templates (id TEXT PRIMARY KEY, name TEXT NOT NULL, baseHolds INTEGER DEFAULT 5, baseShields INTEGER DEFAULT 10, baseFighters INTEGER DEFAULT 0, baseCost INTEGER DEFAULT 500, description TEXT, tier INTEGER DEFAULT 1, isCustom BOOLEAN DEFAULT FALSE);
+      CREATE TABLE IF NOT EXISTS ship_templates (id TEXT PRIMARY KEY, name TEXT NOT NULL, baseHolds INTEGER DEFAULT 5, baseShields INTEGER DEFAULT 10, baseFighters INTEGER DEFAULT 0, baseCost INTEGER DEFAULT 500, description TEXT, tier INTEGER DEFAULT 1, ascii TEXT, isCustom BOOLEAN DEFAULT FALSE);
       CREATE TABLE IF NOT EXISTS ship_modifiers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, type TEXT NOT NULL, holdsMod REAL DEFAULT 1.0, shieldsMod REAL DEFAULT 1.0, fightersMod REAL DEFAULT 1.0, costMod REAL DEFAULT 1.0, description TEXT);
     `)
+  } else {
+    const shipCols = db.prepare("PRAGMA table_info(ship_templates)").all() as any[]
+    if (!shipCols.some(c => c.name === 'ascii')) {
+      db.prepare("ALTER TABLE ship_templates ADD COLUMN ascii TEXT").run()
+    }
+  }
+
+  const templateCount = db.prepare('SELECT count(*) as count FROM ship_templates').get().count
+  if (templateCount === 0) {
+    const insertT = db.prepare('INSERT INTO ship_templates (id, name, baseHolds, baseShields, baseFighters, baseCost, description, tier, ascii) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    const insertM = db.prepare('INSERT INTO ship_modifiers (name, type, holdsMod, shieldsMod, fightersMod, costMod, description) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    db.transaction(() => {
+      SHIP_TEMPLATES.forEach((t: any) => insertT.run(t.id, t.name, t.baseHolds, t.baseShields, t.baseFighters, t.baseCost, t.description, t.tier, JSON.stringify(t.ascii || [])))
+      SHIP_PREFIXES.forEach((m: any) => insertM.run(m.name, 'prefix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
+      SHIP_SUFFIXES.forEach((m: any) => insertM.run(m.name, 'suffix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
+    })()
   }
 
   // Stock Market Migrations
@@ -135,6 +178,12 @@ export function initDb(): void {
   if (!playerCols.some(col => col.name === 'lastLoginAt')) {
     db.prepare("ALTER TABLE players ADD COLUMN lastLoginAt TEXT").run()
   }
+  if (!playerCols.some(col => col.name === 'isBanned')) {
+    db.prepare("ALTER TABLE players ADD COLUMN isBanned BOOLEAN DEFAULT FALSE").run()
+  }
+
+  // Check for isBanned column
+  const playerCols = db.prepare("PRAGMA table_info(players)").all() as any[]
   if (!playerCols.some(col => col.name === 'isBanned')) {
     db.prepare("ALTER TABLE players ADD COLUMN isBanned BOOLEAN DEFAULT FALSE").run()
   }
@@ -340,5 +389,7 @@ export const dbOps = {
     return { totalCredits, totalCargo, totalPlanetCredits }
   },
   updateBasePrice: (commodity: string, price: number) => db.prepare('INSERT OR REPLACE INTO world_settings (key, value) VALUES (?, ?)').run(`base_price_${commodity}`, price.toString()),
+  getWorldSettings: () => db.prepare('SELECT * FROM world_settings').all(),
+  getSetting: (key: string) => db.prepare('SELECT * FROM world_settings WHERE key = ?').get(key),
   triggerManualEvent: (type: string, message: string) => dbOps.insertGlobalEvent(type, `[ADMIN ALERT] ${message}`)
 }

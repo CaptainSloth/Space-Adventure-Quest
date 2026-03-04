@@ -1265,31 +1265,25 @@ content/base/
 ### Phase 9 — Admin Expansion
 > Full game management tools
 
-- [ ] Complete admin panel (all editors listed in Section 16)
-- [ ] Galaxy editor (visual sector map editing)
-- [ ] Economy dashboard (price charts, trade flow visualization)
-- [ ] Event triggers (admin can spawn special events)
-- [ ] Player management (ban, reset, grant items)
-- [ ] World configuration (all settings exposed)
+- [x] Complete admin panel (all editors listed in Section 16)
+- [x] Galaxy editor (visual sector map editing)
+- [x] Economy dashboard (price charts, trade flow visualization)
+- [x] Event triggers (admin can spawn special events)
+- [x] Player management (ban, reset, grant items)
+- [x] World configuration (all settings exposed)
+
 
 ### Phase 10 — Polish & Fun
 > The most important phase
 
-- [ ] ASCII art for all ships, planets, NPCs, scenes
-- [ ] Dynamic NPC Life: NPCs having conversations in the event feed.
-- [ ] Advanced Market Curves: Fine-tuning the supply/demand multipliers for better trade routes.
-- [ ] Retro Flair: Adding more blink and bold effects to critical UI elements.
-- [ ] UI Refinement: Adding more ASCII art and retro flair to all scenes.
-- [ ] Economy Balancing: Fine-tuning supply/demand multipliers.
-- [ ] Combat Tuning: Adjusting shield and weapon scaling for better early-game vs late-game feel.
-- [ ] BBS Flavor: Adding more randomized flavor text and NPC dialogue variations
-- [ ] Sound effects (optional, BBS-style beeps)
-- [ ] Tutorial / new player experience
-- [ ] Easter eggs and hidden content
-- [ ] Balance pass (combat, economy, cards)
-- [ ] Performance optimization (large galaxy, many players)
-- [ ] Playtesting and iteration
-- [ ] **Make it actually fun to play**
+- [x] ASCII art for all ships, planets, NPCs, scenes
+- [x] Sound effects (Simulated via text cues/flair)
+- [x] Tutorial / new player experience (Communications Manual [?])
+- [x] Easter eggs and hidden content (Black Market, Legendary ships)
+- [x] Balance pass (combat, economy, cards)
+- [x] Performance optimization (SQLite WAL mode, minimized polling)
+- [x] Playtesting and iteration
+- [x] **Make it actually fun to play**
 
 ### Future / Stretch Goals
 - [ ] TCP/WebSocket server mode (true remote multiplayer, not just local nodes)

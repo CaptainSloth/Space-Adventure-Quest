@@ -22,13 +22,19 @@ export const BASE_PRICES: Record<Commodity, number> = {
 export function calculateDynamicPrice(commodity: Commodity, currentStock: number, isBuyForPort: boolean): number {
   const base = BASE_PRICES[commodity]
   const idealStock = 1000
-  const clampedStock = Math.max(50, Math.min(5000, currentStock))
-  const multiplier = idealStock / clampedStock
+  
+  // Clamp stock to prevent infinity (Min 100, Max 4000)
+  const clampedStock = Math.max(100, Math.min(4000, currentStock))
+  
+  // Dampened curve: sqrt(Ideal/Current)
+  // Stock 100 -> ~3.1x price (instead of 10x)
+  // Stock 4000 -> ~0.5x price
+  const multiplier = Math.sqrt(idealStock / clampedStock)
   const midPrice = base * multiplier
   
   return isBuyForPort 
-    ? Math.floor(midPrice * 0.9) 
-    : Math.floor(midPrice * 1.1)
+    ? Math.floor(midPrice * 0.85) 
+    : Math.floor(midPrice * 1.15)
 }
 
 export const getPortInventory = (portType: number): PortInventory => {
