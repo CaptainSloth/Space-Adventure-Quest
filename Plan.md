@@ -1176,10 +1176,10 @@ content/base/
 - [x] Death & respawn system
 - [x] Alignment system (faction shifts from actions)
 - [x] Admin section (for testing and resets)
-- [ ] Planet daily reports
-- [ ] Mine & fighter deployment in sectors
-- [ ] Bounty board (daily missions)
-- [ ] Basic rankings (net worth, kills, trading)
+- [x] Planet daily reports (basic)
+- [x] Mine & fighter deployment in sectors
+- [x] Bounty board (daily missions)
+- [x] Basic rankings (net worth, kills, trading)
 
 ### Phase 3 — Multiplayer Core
 > Multiple players in the same galaxy
@@ -1191,8 +1191,8 @@ content/base/
 - [x] PvP combat
 - [x] Sector chat
 - [x] Player scanning (see other players in sector)
-- [ ] Multinode-only events (appear when 2+ players online)
-- [ ] Blockade mechanics
+- [x] Multinode-only events (appear when 2+ players online)
+- [x] Blockade mechanics
 
 ### Phase 4 — Companies & Alliances
 > Team play and social features

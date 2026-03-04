@@ -121,6 +121,27 @@ export interface OnlinePlayer {
   level: number
 }
 
+export interface Bounty {
+  id: number
+  type: string
+  target: string
+  required: number
+  progress: number
+  reward: number
+  expiresAt: string
+}
+
+export interface RankingEntry {
+  name: string
+  value: number
+}
+
+export interface GalacticRankings {
+  netWorth: RankingEntry[]
+  kills: RankingEntry[]
+  alignment: RankingEntry[]
+}
+
 export interface GameState {
   player: Player | null
   currentSector: Sector | null
@@ -132,6 +153,8 @@ export interface GameState {
   onlinePlayers: OnlinePlayer[]
   chatMessages: ChatMessage[]
   globalEvents: GlobalEvent[]
+  rankings: GalacticRankings | null
+  bounties: Bounty[]
 }
 
 export interface SerializableSceneOption {
@@ -150,6 +173,8 @@ export interface SerializableSceneViewModel {
   onlinePlayers?: OnlinePlayer[]
   chatMessages?: ChatMessage[]
   globalEvents?: GlobalEvent[]
+  rankings?: GalacticRankings | null
+  bounties?: Bounty[]
 }
 
 export interface SceneOption extends SerializableSceneOption {

@@ -152,6 +152,27 @@ CREATE TABLE IF NOT EXISTS sector_messages (
   createdAt TEXT NOT NULL
 );
 
+-- Bounties
+CREATE TABLE IF NOT EXISTS bounties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  playerId TEXT NOT NULL,
+  type TEXT NOT NULL,                 -- 'kill', 'trade', 'explore'
+  target TEXT,                        -- npcId or commodity
+  required INTEGER NOT NULL,
+  progress INTEGER DEFAULT 0,
+  reward INTEGER NOT NULL,
+  completed BOOLEAN DEFAULT FALSE,
+  expiresAt TEXT NOT NULL
+);
+
+-- Planet Daily Reports
+CREATE TABLE IF NOT EXISTS planet_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  planetId TEXT NOT NULL,
+  report TEXT NOT NULL,               -- JSON
+  createdAt TEXT NOT NULL
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

@@ -12,6 +12,7 @@ interface SceneViewModel {
   options: SceneOption[]
   ascii?: string[]
   lastMessage?: string | null
+  selectedPlanetId?: string | null
   playerList?: { id: string, name: string }[]
   onlinePlayers?: any[]
   chatMessages?: any[]
@@ -24,8 +25,10 @@ const App: React.FC = () => {
   const [chatInput, setChatInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
+  const [notifications, setNotifications] = useState<string[]>([])
   
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const lastEventId = useRef<number>(0)
 
   const refreshScene = useCallback(async () => {
     try {
@@ -34,6 +37,9 @@ const App: React.FC = () => {
       setVm(newVm)
       if (newVm.selectedPlanetId !== undefined) {
         setSelectedPlanetId(newVm.selectedPlanetId)
+      }
+      if (newVm.globalEvents && newVm.globalEvents.length > 0) {
+        lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
       }
     } catch (err) {
       console.error('Renderer: Error in get-scene:', err)
@@ -57,6 +63,19 @@ const App: React.FC = () => {
         // @ts-ignore
         const newVm = await window.api.invoke('poll-state')
         setVm(newVm)
+
+        // Process new global events for notifications
+        if (newVm.globalEvents) {
+          const newEvents = newVm.globalEvents.filter((e: any) => e.id > lastEventId.current)
+          if (newEvents.length > 0) {
+            lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
+            setNotifications(prev => [...prev, ...newEvents.map((e: any) => e.payload)])
+            // Clear notification after 5 seconds
+            setTimeout(() => {
+              setNotifications(prev => prev.slice(1))
+            }, 5000)
+          }
+        }
       } catch (e) {
         console.error('Polling error', e)
       }
@@ -113,7 +132,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger actions if typing in an input or textarea
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         return
@@ -151,6 +169,15 @@ const App: React.FC = () => {
 
   return (
     <div className="container">
+      {/* Real-time Pop-up Notifications */}
+      <div className="notification-overlay">
+        {notifications.map((note, i) => (
+          <div key={i} className="notification-toast">
+            {parseSansi(`%b[ALERT]%7 ${note}`)}
+          </div>
+        ))}
+      </div>
+
       {/* Global Event Feed (Ticker) */}
       {vm.globalEvents && vm.globalEvents.length > 0 && (
         <div className="event-feed">
