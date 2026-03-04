@@ -1276,6 +1276,13 @@ content/base/
 > The most important phase
 
 - [ ] ASCII art for all ships, planets, NPCs, scenes
+- [ ] Dynamic NPC Life: NPCs having conversations in the event feed.
+- [ ] Advanced Market Curves: Fine-tuning the supply/demand multipliers for better trade routes.
+- [ ] Retro Flair: Adding more blink and bold effects to critical UI elements.
+- [ ] UI Refinement: Adding more ASCII art and retro flair to all scenes.
+- [ ] Economy Balancing: Fine-tuning supply/demand multipliers.
+- [ ] Combat Tuning: Adjusting shield and weapon scaling for better early-game vs late-game feel.
+- [ ] BBS Flavor: Adding more randomized flavor text and NPC dialogue variations
 - [ ] Sound effects (optional, BBS-style beeps)
 - [ ] Tutorial / new player experience
 - [ ] Easter eggs and hidden content
