@@ -92,6 +92,15 @@ export interface CargoItem {
   quantity: number
 }
 
+export interface PlanetBuilding {
+  id: number
+  planetId: string
+  type: 'shipyard' | 'defense_grid' | 'sensor_array' | 'cantina' | 'refinery'
+  level: number
+  status: string
+  builtAt: string
+}
+
 export interface StarCard {
   id: string
   name: string
@@ -220,6 +229,7 @@ export interface GameState {
   pendingShipPurchase?: any | null
   playerDeck: PlayerCard[]
   allStarCards: StarCard[]
+  planetBuildings: PlanetBuilding[]
   adminBuilder?: {
     templateId?: string
     prefixId?: number
@@ -295,6 +305,7 @@ export interface SerializableSceneViewModel {
   shipyardStock?: any[]
   playerDeck?: PlayerCard[]
   allStarCards?: StarCard[]
+  planetBuildings?: PlanetBuilding[]
   currentDuel?: DuelState | null
 }
 

@@ -280,6 +280,17 @@ CREATE TABLE IF NOT EXISTS player_cards (
   FOREIGN KEY (cardId) REFERENCES star_cards(id)
 );
 
+-- Planet Buildings
+CREATE TABLE IF NOT EXISTS planet_buildings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  planetId TEXT NOT NULL,
+  type TEXT NOT NULL,               -- 'shipyard', 'defense_grid', 'sensor_array', 'cantina', 'refinery'
+  level INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'operational', -- 'operational', 'under_construction', 'damaged'
+  builtAt TEXT NOT NULL,
+  FOREIGN KEY (planetId) REFERENCES planets(id)
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

@@ -29,7 +29,8 @@ let currentState: GameState = {
   playerPortfolio: [],
   shipyardStock: getRandomShipyardStock(5),
   playerDeck: [],
-  allStarCards: []
+  allStarCards: [],
+  planetBuildings: []
 }
 
 function createWindow(): void {
@@ -83,6 +84,12 @@ const syncAllData = () => {
     currentState.playerDeck = dbOps.getPlayerCards(currentState.player.id) as any
     currentState.allStarCards = dbOps.getAllStarCards() as any
     
+    if (currentState.selectedPlanetId) {
+      currentState.planetBuildings = dbOps.getPlanetBuildings(currentState.selectedPlanetId) as any
+    } else {
+      currentState.planetBuildings = []
+    }
+
     if (currentState.player.companyId) {
       currentState.currentCompany = dbOps.getCompany(currentState.player.companyId) as any
       currentState.companyMembers = dbOps.getCompanyMembers(currentState.player.companyId) as any
@@ -133,7 +140,8 @@ const returnSerializedScene = () => {
     currentState.shipyardStock,
     (currentState as any).stockHistory,
     currentState.playerDeck,
-    currentState.allStarCards
+    currentState.allStarCards,
+    currentState.planetBuildings
   )
 }
 
@@ -222,6 +230,21 @@ app.whenReady().then(() => {
             dbOps.updatePlanetPort(planetId, true, JSON.stringify({ ore: 10, fuel: 20, equipment: 100 }))
             newState.lastMessage = 'Port established! You can now set prices and trade here.'
             dbOps.insertGlobalEvent('PORT_ESTABLISHED', `A new player-run trading port has opened on ${planetId}!`)
+          }
+        }
+
+        // Handle Building Construction
+        if (newState.lastMessage?.includes('Requesting building:')) {
+          const parts = newState.lastMessage.split(':')
+          const type = parts[1]
+          const cost = parseInt(parts[2])
+          const planetId = parts[3]
+          
+          if (newState.player!.credits >= cost) {
+            newState.player!.credits -= cost
+            dbOps.buildOnPlanet(planetId, type)
+            db.prepare('UPDATE players SET credits = ? WHERE id = ?').run(newState.player!.credits, newState.player!.id)
+            newState.lastMessage = `Facility [${type.toUpperCase()}] is now operational on ${planetId}.`
           }
         }
 

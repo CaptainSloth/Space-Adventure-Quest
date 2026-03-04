@@ -145,6 +145,22 @@ export function initDb(): void {
       CREATE TABLE IF NOT EXISTS player_stocks (playerId TEXT NOT NULL, symbol TEXT NOT NULL, quantity INTEGER DEFAULT 0, avgPrice REAL DEFAULT 0, PRIMARY KEY (playerId, symbol));
     `)
   }
+
+  // Planet Buildings Migration
+  const hasBuildings = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='planet_buildings'").get()
+  if (!hasBuildings) {
+    console.log('Migrating: Adding planet_buildings table...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS planet_buildings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        planetId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        level INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'operational',
+        builtAt TEXT NOT NULL
+      )
+    `)
+  }
 }
 
 export function getDb(): Database.Database {
@@ -320,5 +336,17 @@ export const dbOps = {
   },
   transferCard: (instanceId: number, fromPlayerId: string, toPlayerId: string) => {
     return db.prepare('UPDATE player_cards SET playerId = ?, equipped = 0 WHERE id = ? AND playerId = ?').run(toPlayerId, instanceId, fromPlayerId)
+  },
+  getPlanetBuildings: (planetId: string) => {
+    return db.prepare('SELECT * FROM planet_buildings WHERE planetId = ?').all(planetId)
+  },
+  buildOnPlanet: (planetId: string, type: string) => {
+    return db.prepare(`
+      INSERT INTO planet_buildings (planetId, type, builtAt)
+      VALUES (?, ?, datetime('now'))
+    `).run(planetId, type)
+  },
+  upgradeBuilding: (buildingId: number) => {
+    return db.prepare('UPDATE planet_buildings SET level = level + 1 WHERE id = ?').run(buildingId)
   }
 }

@@ -50,7 +50,8 @@ export const toSerializable = (
   shipyardStock?: any[],
   stockHistory?: number[],
   playerDeck?: PlayerCard[],
-  allStarCards?: StarCard[]
+  allStarCards?: StarCard[],
+  planetBuildings?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -77,6 +78,7 @@ export const toSerializable = (
     stockHistory,
     playerDeck,
     allStarCards,
+    planetBuildings,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -409,12 +411,35 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
           const report = dbOps.getPlanetReport(planet!.id)
           return { ...s, lastMessage: report ? report.report : 'No report.' }
         }},
-        ...(!planet?.hasPort ? [{ label: 'Build Port (10k)', key: 'P', action: async (s: any) => (s.player!.credits >= 10000 ? { ...s, lastMessage: `Requesting port construction for ${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) }] : []),
+        ...(!planet?.hasPort ? [{ label: 'Build Port (10k)', key: 'P', action: async (s: GameState) => (s.player!.credits >= 10000 ? { ...s, lastMessage: `Requesting port construction for ${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) }] : []),
+        { label: 'Construction Bay', key: 'C', action: async (s) => ({ ...s, currentScene: 'planet_construction' }) },
         { label: 'Mining', key: 'M', action: async (s) => ({ ...s, currentScene: 'planet_mining' }) },
         { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_surface' }) }
-      ]
-    }
-  },
+        ]
+        }
+        },
+        planet_construction: (state) => {
+        const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
+        const buildings = state.planetBuildings || []
+        const buildingDefs = [
+        { type: 'shipyard', name: 'Shipyard', cost: 15000, desc: 'Enables repairs and hull swaps.' },
+        { type: 'defense_grid', name: 'Defense Grid', cost: 20000, desc: 'Automated planetary defense.' },
+        { type: 'sensor_array', name: 'Sensor Array', cost: 8000, desc: 'Increased sector scan range.' },
+        { type: 'cantina', name: 'Cantina', cost: 5000, desc: 'Local venue for duels and rumors.' },
+        { type: 'refinery', name: 'Refinery', cost: 12000, desc: 'Increases resource output.' }
+        ]
+        const existingTypes = buildings.map(b => b.type)
+        const available = buildingDefs.filter(d => !existingTypes.includes(d.type))
+        return {
+        title: `\`%eCONSTRUCTION: ${planet?.name}\` %7`,
+        description: `Operational: ${buildings.length}\nAvailable Projects:\n${available.map(d => `- ${d.name} (${d.cost} cr)`).join('\n')}`,
+        options: [
+        ...available.map((d, i) => ({ label: `Construct ${d.name}`, key: (i + 1).toString(), action: async (s: GameState) => (s.player!.credits >= d.cost ? { ...s, lastMessage: `Requesting building:${d.type}:${d.cost}:${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) })),
+        { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_manage' }) }
+        ]
+        }
+        },
+
   planet_trade: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     const prices = planet?.portPrices ? JSON.parse(planet.portPrices) : { ore: 10, fuel: 20, equipment: 100 }
