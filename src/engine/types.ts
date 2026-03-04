@@ -200,6 +200,12 @@ export interface GameState {
   playerPortfolio: any[]
   shipyardStock: any[]
   pendingShipPurchase?: any | null
+  adminBuilder?: {
+    templateId?: string
+    prefixId?: number
+    suffixId?: number
+    step: 'menu' | 'template_list' | 'modifier_list' | 'build_template' | 'build_prefix' | 'build_suffix' | 'review'
+  }
 }
 
 export interface SerializableSceneOption {

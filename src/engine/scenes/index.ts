@@ -3,6 +3,7 @@ import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatS
 import { getPortInventory } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
 import { dbOps } from '../../main/db'
+import { SHIP_TEMPLATES } from '../ships'
 
 export type SceneRegistry = {
   [K in SceneId]?: (state: GameState) => SceneViewModel
@@ -379,34 +380,161 @@ ${r?.alignment.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.va
     ]
   }),
   admin_ships: (state) => {
-    // Import templates here to avoid circular dep if needed, but they are in engine/ships.ts
-    const { SHIP_TEMPLATES } = require('../ships')
-    return {
-      title: '`%1ADMIN: SHIP EDITOR` %7',
-      description: 'Select a ship template to instantly commission it for your pilot.',
-      options: [
-        ...SHIP_TEMPLATES.map((t: any, i: number) => ({
-          label: `[TIER ${t.tier}] Commission ${t.name}`,
-          key: (i + 1).toString(),
-          action: async (s: GameState) => {
+    const builder = state.adminBuilder || { step: 'menu' }
+    const templates = dbOps.getShipTemplates() as any[]
+    const modifiers = dbOps.getShipModifiers() as any[]
+
+    if (builder.step === 'menu') {
+      return {
+        title: '`%1ADMIN: SHIP EXPANSION EDITOR` %7',
+        description: `Manage the galactic fleet definitions.
+Templates: \`%f${templates.length}\` %7 | Modifiers: \`%f${modifiers.length}\` %7`,
+        options: [
+          { label: 'Manage Templates', key: 'T', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'template_list' } }) },
+          { label: 'Manage Modifiers', key: 'M', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'modifier_list' } }) },
+          { label: 'Build Custom Ship', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'build_template' } }) },
+          { label: 'Back to Admin', key: 'A', action: async (s) => ({ ...s, currentScene: 'admin', adminBuilder: undefined }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'template_list') {
+      return {
+        title: '`%1ADMIN: SHIP TEMPLATES` %7',
+        description: 'Existing base hulls in the database:',
+        options: [
+          ...templates.map((t, i) => ({
+            label: `[TIER ${t.tier}] ${t.name} (H:${t.baseHolds} S:${t.baseShields})`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, lastMessage: `Editing template ${t.id} not yet fully implemented (DB delete available).` })
+          })),
+          { label: 'Delete Last Template', key: 'D', action: async (s) => {
+            const last = templates[templates.length - 1]
+            if (last) dbOps.deleteShipTemplate(last.id)
+            return { ...s, lastMessage: 'Removed latest template.' }
+          }},
+          { label: 'Back to Menu', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'modifier_list') {
+      return {
+        title: '`%1ADMIN: SHIP MODIFIERS` %7',
+        description: 'Existing prefixes and suffixes in the database:',
+        options: [
+          ...modifiers.map((m, i) => ({
+            label: `[${m.type.toUpperCase()}] ${m.name} (H:${m.holdsMod}x S:${m.shieldsMod}x)`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, lastMessage: `Editing modifier ${m.name} not yet fully implemented.` })
+          })),
+          { label: 'Delete Last Modifier', key: 'D', action: async (s) => {
+            const last = modifiers[modifiers.length - 1]
+            if (last) dbOps.deleteShipModifier(last.id)
+            return { ...s, lastMessage: 'Removed latest modifier.' }
+          }},
+          { label: 'Back to Menu', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'build_template') {
+      return {
+        title: '`%1BUILDER: STEP 1` %7',
+        description: 'Select a base template for the new commissioned hull:',
+        options: [
+          ...templates.map((t, i) => ({
+            label: `Base: ${t.name}`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, adminBuilder: { ...builder, templateId: t.id, step: 'build_prefix' } })
+          })),
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'build_prefix') {
+      const prefixes = modifiers.filter(m => m.type === 'prefix')
+      return {
+        title: '`%1BUILDER: STEP 2` %7',
+        description: 'Select an optional Prefix modifier:',
+        options: [
+          { label: 'None (Standard)', key: '0', action: async (s) => ({ ...s, adminBuilder: { ...builder, prefixId: undefined, step: 'build_suffix' } }) },
+          ...prefixes.map((m, i) => ({
+            label: `Prefix: ${m.name} (${m.description})`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, adminBuilder: { ...builder, prefixId: m.id, step: 'build_suffix' } })
+          })),
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'build_suffix') {
+      const suffixes = modifiers.filter(m => m.type === 'suffix')
+      return {
+        title: '`%1BUILDER: STEP 3` %7',
+        description: 'Select an optional Suffix modifier:',
+        options: [
+          { label: 'None (Standard)', key: '0', action: async (s) => ({ ...s, adminBuilder: { ...builder, suffixId: undefined, step: 'review' } }) },
+          ...suffixes.map((m, i) => ({
+            label: `Suffix: ${m.name} (${m.description})`,
+            key: (i + 1).toString(),
+            action: async (s: GameState) => ({ ...s, adminBuilder: { ...builder, suffixId: m.id, step: 'review' } })
+          })),
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: { ...builder, step: 'menu' } }) }
+        ]
+      }
+    }
+
+    if (builder.step === 'review') {
+      const template = templates.find(t => t.id === builder.templateId)
+      const prefix = modifiers.find(m => m.id === builder.prefixId)
+      const suffix = modifiers.find(m => m.id === builder.suffixId)
+      
+      const holds = Math.floor(template.baseHolds * (prefix?.holdsMod || 1) * (suffix?.holdsMod || 1))
+      const shields = Math.floor(template.baseShields * (prefix?.shieldsMod || 1) * (suffix?.shieldsMod || 1))
+      const fighters = Math.floor(template.baseFighters * (prefix?.fightersMod || 1) * (suffix?.fightersMod || 1))
+      const name = `${prefix ? prefix.name + ' ' : ''}${template.name}${suffix ? ' ' + suffix.name : ''}`
+
+      return {
+        title: '`%1BUILDER: FINAL REVIEW` %7',
+        description: `
+Vessel Name: \`%f${name}\` %7
+Template: ${template.name}
+Holds: \`%e${holds}\` %7
+Shields: \`%e${shields}\` %7
+Fighters: \`%e${fighters}\` %7
+
+Commission this hull instantly?`,
+        options: [
+          { label: 'COMMISSION HULL', key: 'C', action: async (s) => {
             return {
               ...s,
-              player: { ...s.player!, shipId: t.name, maxTurns: 75 + (t.tier * 5) },
+              player: { ...s.player!, shipId: name, maxTurns: 75 + (template.tier * 5) },
               pendingShipPurchase: {
-                templateId: t.id,
-                instanceName: `Admin ${t.name}`,
-                holds: t.baseHolds,
-                shields: t.baseShields,
-                fighters: t.baseFighters,
+                templateId: template.id,
+                instanceName: name,
+                holds,
+                shields,
+                fighters,
                 cost: 0,
-                tier: t.tier
+                tier: template.tier
               },
-              lastMessage: `Admin override: Commissioned ${t.name}.`
+              adminBuilder: undefined,
+              lastMessage: `Admin Build Complete: ${name} commissioned.`
             }
-          }
-        })),
-        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
-      ]
+          }},
+          { label: 'Start Over', key: 'R', action: async (s) => ({ ...s, adminBuilder: { step: 'menu' } }) },
+          { label: 'Cancel', key: 'B', action: async (s) => ({ ...s, adminBuilder: undefined, currentScene: 'admin' }) }
+        ]
+      }
+    }
+
+    return {
+      title: 'ERROR',
+      description: 'Invalid builder state.',
+      options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, adminBuilder: { step: 'menu' } }) }]
     }
   },
   admin_npcs: (state) => {

@@ -232,6 +232,31 @@ CREATE TABLE IF NOT EXISTS stock_history (
   recordedAt TEXT NOT NULL
 );
 
+-- Dynamic Ship Templates
+CREATE TABLE IF NOT EXISTS ship_templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  baseHolds INTEGER DEFAULT 5,
+  baseShields INTEGER DEFAULT 10,
+  baseFighters INTEGER DEFAULT 0,
+  baseCost INTEGER DEFAULT 500,
+  description TEXT,
+  tier INTEGER DEFAULT 1,
+  isCustom BOOLEAN DEFAULT FALSE
+);
+
+-- Dynamic Ship Modifiers
+CREATE TABLE IF NOT EXISTS ship_modifiers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,               -- 'prefix' or 'suffix'
+  holdsMod REAL DEFAULT 1.0,
+  shieldsMod REAL DEFAULT 1.0,
+  fightersMod REAL DEFAULT 1.0,
+  costMod REAL DEFAULT 1.0,
+  description TEXT
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

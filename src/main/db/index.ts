@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync } from 'fs'
 import { generateGalaxy } from '../../engine/galaxy'
+import { SHIP_TEMPLATES, SHIP_PREFIXES, SHIP_SUFFIXES, LEGENDARY_SHIPS } from '../../engine/ships'
 
 let db: Database.Database
 
@@ -199,6 +200,49 @@ export function initDb(): void {
   const hasHistory = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_history'").get()
   if (!hasHistory) {
     db.exec('CREATE TABLE stock_history (symbol TEXT NOT NULL, price REAL NOT NULL, recordedAt TEXT NOT NULL)')
+  }
+
+  // Ship System Migrations
+  const hasTemplates = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ship_templates'").get()
+  if (!hasTemplates) {
+    console.log('Migrating: Adding ship template tables...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ship_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        baseHolds INTEGER DEFAULT 5,
+        baseShields INTEGER DEFAULT 10,
+        baseFighters INTEGER DEFAULT 0,
+        baseCost INTEGER DEFAULT 500,
+        description TEXT,
+        tier INTEGER DEFAULT 1,
+        isCustom BOOLEAN DEFAULT FALSE
+      );
+      CREATE TABLE IF NOT EXISTS ship_modifiers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        holdsMod REAL DEFAULT 1.0,
+        shieldsMod REAL DEFAULT 1.0,
+        fightersMod REAL DEFAULT 1.0,
+        costMod REAL DEFAULT 1.0,
+        description TEXT
+      );
+    `)
+  }
+
+  // Seed Ships if empty
+  const templateCount = db.prepare('SELECT count(*) as count FROM ship_templates').get().count
+  if (templateCount === 0) {
+    console.log('Seeding initial ship templates and modifiers...')
+    const insertT = db.prepare('INSERT INTO ship_templates (id, name, baseHolds, baseShields, baseFighters, baseCost, description, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    const insertM = db.prepare('INSERT INTO ship_modifiers (name, type, holdsMod, shieldsMod, fightersMod, costMod, description) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    
+    db.transaction(() => {
+      SHIP_TEMPLATES.forEach((t: any) => insertT.run(t.id, t.name, t.baseHolds, t.baseShields, t.baseFighters, t.baseCost, t.description, t.tier))
+      SHIP_PREFIXES.forEach((m: any) => insertM.run(m.name, 'prefix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
+      SHIP_SUFFIXES.forEach((m: any) => insertM.run(m.name, 'suffix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
+    })()
   }
 
   // Initialize Stocks
@@ -595,5 +639,30 @@ export const dbOps = {
   },
   getStockHistory: (symbol: string, limit: number = 20) => {
     return db.prepare('SELECT price FROM stock_history WHERE symbol = ? ORDER BY recordedAt DESC LIMIT ?').all(symbol, limit).reverse()
+  },
+  getShipTemplates: () => {
+    return db.prepare('SELECT * FROM ship_templates ORDER BY tier ASC, name ASC').all()
+  },
+  addShipTemplate: (template: any) => {
+    return db.prepare(`
+      INSERT INTO ship_templates (id, name, baseHolds, baseShields, baseFighters, baseCost, description, tier, isCustom)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(template.id, template.name, template.baseHolds, template.baseShields, template.baseFighters, template.baseCost, template.description, template.tier)
+  },
+  deleteShipTemplate: (id: string) => {
+    return db.prepare('DELETE FROM ship_templates WHERE id = ?').run(id)
+  },
+  getShipModifiers: (type?: string) => {
+    if (type) return db.prepare('SELECT * FROM ship_modifiers WHERE type = ?').all(type)
+    return db.prepare('SELECT * FROM ship_modifiers').all()
+  },
+  addShipModifier: (mod: any) => {
+    return db.prepare(`
+      INSERT INTO ship_modifiers (name, type, holdsMod, shieldsMod, fightersMod, costMod, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(mod.name, mod.type, mod.holdsMod, mod.shieldsMod, mod.fightersMod, mod.costMod, mod.description)
+  },
+  deleteShipModifier: (id: number) => {
+    return db.prepare('DELETE FROM ship_modifiers WHERE id = ?').run(id)
   }
 }
