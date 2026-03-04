@@ -12,7 +12,9 @@ let currentState: GameState = {
   currentScene: 'title',
   lastMessage: null,
   currentPlanets: [],
+  currentNpcs: [],
   selectedPlanetId: null,
+  selectedNpcId: null,
   combat: null,
   onlinePlayers: [],
   chatMessages: [],
@@ -84,6 +86,7 @@ const syncAllData = () => {
     currentState.stocks = dbOps.getStocks() as any
     currentState.playerPortfolio = dbOps.getPlayerStocks(currentState.player.id) as any
     currentState.currentPlanets = dbOps.getPlanetsBySector(secId) as any
+    currentState.currentNpcs = dbOps.getNpcsInSector(secId) as any
     currentState.playerDeck = dbOps.getPlayerCards(currentState.player.id) as any
     currentState.allStarCards = dbOps.getAllStarCards() as any
     currentState.spaceStations = dbOps.getSpaceStations(secId) as any
@@ -148,7 +151,8 @@ const returnSerializedScene = () => {
     currentState.allStarCards,
     currentState.planetBuildings,
     currentState.spaceStations,
-    currentState.resourceNodes
+    currentState.resourceNodes,
+    currentState.currentNpcs
   )
 }
 
@@ -195,6 +199,10 @@ app.whenReady().then(() => {
       if (newState) {
         if (newState.currentScene !== oldScene) {
           newState.lastMessage = null
+        }
+
+        if (newState.lastMessage === 'Fighter deployed.') {
+          dbOps.deploySectorAsset(newState.player!.sectorId, newState.player!.id, 'fighter', 1)
         }
 
         // Handle CCG Equip Request
@@ -323,9 +331,25 @@ app.whenReady().then(() => {
       currentState.onlinePlayers = dbOps.getOnlinePlayersInSector(currentState.player.sectorId, currentState.player.id) as any
       currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
       currentState.globalEvents = dbOps.getGlobalEvents() as any
-      
-      if (Math.random() < 0.1) {
-        const wanderingNpcs = db.prepare("SELECT * FROM npcs WHERE scheduleType IN ('wanderer', 'patrol')").all() as any[]
+
+      // Phase 10: Dynamic NPC Life Conversations in Event Feed
+      if (Math.random() < 0.05) { // 5% chance per poll to spawn a "Life" event
+        const npcs = dbOps.getNpcsInSector(currentState.player.sectorId) as any[]
+        if (npcs.length > 0) {
+          const npc = npcs[Math.floor(Math.random() * npcs.length)]
+          const convos = [
+            `[COMM] ${npc.name}: "All systems nominal. Sector scan confirms no immediate threats."`,
+            `[COMM] ${npc.name}: "Trading is slow today. I miss the gold rush of 3022."`,
+            `[COMM] ${npc.name}: "Watch out for the nebula in Sector ${Math.floor(Math.random()*500)}. Static discharge is heavy there."`,
+            `[COMM] ${npc.name}: "Another day, another credit. The frontier never sleeps."`,
+            `[COMM] ${npc.name}: "I hear the Empire is pushing deeper into neutral space. Troubling times."`
+          ]
+          const flavor = convos[Math.floor(Math.random() * convos.length)]
+          dbOps.insertGlobalEvent('NPC_CHAT', flavor)
+        }
+      }
+
+      if (Math.random() < 0.1) {        const wanderingNpcs = db.prepare("SELECT * FROM npcs WHERE scheduleType IN ('wanderer', 'patrol')").all() as any[]
         for (const npc of wanderingNpcs) {
           const currentSector = dbOps.getSector(npc.sectorId)
           if (currentSector) {

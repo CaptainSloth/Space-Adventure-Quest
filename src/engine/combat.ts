@@ -44,8 +44,16 @@ export const processCombatRound = (state: CombatState): CombatState => {
 }
 
 function calculateDamage(source: CombatSide, target: CombatSide): number {
-  // Simple formula: weapon power - (target shields percentage / something) + RNG
-  const base = source.weaponPower
-  const variance = Math.floor(Math.random() * (base * 0.4)) - (base * 0.2)
-  return Math.max(1, base + variance)
+  // Enhanced formula for Phase 10:
+  // Base Damage = WeaponPower * (1 + 0.1 * SourceTier)
+  // Reduction = TargetTier * 0.05 + (TargetShieldLevel * 0.02)
+  
+  const tierBonus = 1 + (source.shipTier * 0.15)
+  const base = source.weaponPower * tierBonus
+  
+  const reduction = (target.shipTier * 0.1) // 10% reduction per tier difference? No, flat reduction based on target tier
+  const finalBase = Math.max(1, base * (1 - reduction))
+  
+  const variance = Math.floor(Math.random() * (finalBase * 0.3)) - (finalBase * 0.15)
+  return Math.max(1, Math.floor(finalBase + variance))
 }

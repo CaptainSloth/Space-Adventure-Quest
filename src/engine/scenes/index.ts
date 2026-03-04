@@ -53,7 +53,8 @@ export const toSerializable = (
   allStarCards?: StarCard[],
   planetBuildings?: any[],
   spaceStations?: any[],
-  resourceNodes?: any[]
+  resourceNodes?: any[],
+  currentNpcs?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -63,6 +64,7 @@ export const toSerializable = (
     selectedPlanetId,
     playerList,
     onlinePlayers,
+    currentNpcs,
     chatMessages,
     globalEvents,
     rankings,
@@ -119,29 +121,54 @@ const registry: SceneRegistry = {
       { label: 'Remain Neutral', key: 'N', action: async (s) => ({ ...s, player: { ...s.player!, faction: 'neutral' }, currentScene: 'bridge' }) }
     ]
   }),
-  bridge: (state) => ({
-    title: '`%eSHIP BRIDGE` %7',
-    description: `Order received, Captain. Status scan complete.`,
-    options: [
-      { label: 'Navigation', key: 'N', action: async (s) => ({ ...s, currentScene: 'navigation' }) },
-      { label: 'Sector View', key: 'V', action: async (s) => ({ ...s, currentScene: 'sector_view' }) },
-      { label: 'Port Services', key: 'P', action: async (s) => ({ ...s, currentScene: 'port' }) },
-      { label: 'Shipyard', key: 'Y', action: async (s) => ({ ...s, currentScene: 'shipyard' }) },
-      { label: 'Engineering Bay', key: 'E', action: async (s) => ({ ...s, currentScene: 'station_services' }) },
-      { label: 'Inventory', key: 'I', action: async (s) => ({ ...s, currentScene: 'inventory' }) },
-      { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
-      { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
-      { label: 'Star Cards', key: 'G', action: async (s) => ({ ...s, currentScene: 'card_collection' }) },
-      { label: 'Card Shop', key: 'K', action: async (s) => ({ ...s, currentScene: 'card_shop' }) },
-      { label: 'Galactic News', key: 'W', action: async (s) => ({ ...s, currentScene: 'galactic_news' }) },
-      { label: 'Rankings', key: 'X', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
-      { label: 'Stock Market', key: 'M', action: async (s) => ({ ...s, currentScene: 'stock_market' }) },
-      { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },
-      { label: 'Faction HQ', key: 'H', action: async (s) => ({ ...s, currentScene: 'faction_hq' }) },
-      { label: 'Comm Link', key: 'L', action: async (s) => ({ ...s, currentScene: 'messages' }) },
-      { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+  bridge: (state) => {
+    const shipName = getShipName(state.player?.shipId || null)
+    const flavorTexts = [
+      "The hum of the warp core is a steady, reassuring vibration through the deckplates.",
+      "Tactical displays show local traffic is light. A good day for a cruise.",
+      "Sensors pick up faint echoes of ancient transmissions from the deep rim.",
+      "The crew is busy at their stations, ensuring all systems are at peak efficiency.",
+      "Viewscreen filters are set to maximum. The local star is particularly bright today."
     ]
-  }),
+    const flavor = flavorTexts[Math.floor(Math.random() * flavorTexts.length)]
+    
+    const shipAscii = [
+      "      `%b__      `%7",
+      "   `%f_`%b/  \\`%f_   `%7",
+      "  `%b<`%f_`%b|__|`%f_`%b>  `%7",
+      "     `%f^^      `%7"
+    ]
+
+    return {
+      title: '`%eSHIP BRIDGE` %7',
+      description: `Order received, Captain. Status scan complete.
+
+  Ship: \`%b${shipName}\` %7
+  Status: \`%aOPERATIONAL\` %7
+  
+  "${flavor}"`,
+      ascii: shipAscii,
+      options: [
+        { label: 'Navigation', key: 'N', action: async (s) => ({ ...s, currentScene: 'navigation' }) },
+        { label: 'Sector View', key: 'V', action: async (s) => ({ ...s, currentScene: 'sector_view' }) },
+        { label: 'Port Services', key: 'P', action: async (s) => ({ ...s, currentScene: 'port' }) },
+        { label: 'Shipyard', key: 'Y', action: async (s) => ({ ...s, currentScene: 'shipyard' }) },
+        { label: 'Engineering Bay', key: 'E', action: async (s) => ({ ...s, currentScene: 'station_services' }) },
+        { label: 'Inventory', key: 'I', action: async (s) => ({ ...s, currentScene: 'inventory' }) },
+        { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
+        { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
+        { label: 'Star Cards', key: 'G', action: async (s) => ({ ...s, currentScene: 'card_collection' }) },
+        { label: 'Card Shop', key: 'K', action: async (s) => ({ ...s, currentScene: 'card_shop' }) },
+        { label: 'Galactic News', key: 'W', action: async (s) => ({ ...s, currentScene: 'galactic_news' }) },
+        { label: 'Rankings', key: 'X', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
+        { label: 'Stock Market', key: 'M', action: async (s) => ({ ...s, currentScene: 'stock_market' }) },
+        { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },
+        { label: 'Faction HQ', key: 'H', action: async (s) => ({ ...s, currentScene: 'faction_hq' }) },
+        { label: 'Comm Link', key: 'L', action: async (s) => ({ ...s, currentScene: 'messages' }) },
+        { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
   shipyard: (state) => {
     const stock = state.shipyardStock || []
     return {
@@ -568,6 +595,7 @@ Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
     const deployments = dbOps.getSectorDeployments(state.currentSector!.id)
     const stations = state.spaceStations || []
     const nodes = state.resourceNodes || []
+    const npcs = state.currentNpcs || []
 
     return {
       title: '`%eSECTOR VIEW` %7',
@@ -579,14 +607,22 @@ Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
   \`%bRESOURCE NODES:\` %7
   ${nodes.length > 0 ? nodes.map(n => `- \`%f${n.type.toUpperCase()}\` %7 (${n.commodity.toUpperCase()}) Abundance: ${n.abundance}`).join('\n') : 'None detected.'}
 
+  \`%bSHIPS IN SECTOR:\` %7
+  ${npcs.length > 0 ? npcs.map(n => `- \`%f${n.name}\` %7 [${n.title}]`).join('\n') : 'No other ships detected.'}
+
   \`%bSECTOR ASSETS:\` %7
   ${deployments.length > 0 ? deployments.map(d => `- \`%f${d.quantity}\` %7 ${d.type}(s)`).join('\n') : 'None detected.'}`,
       options: [
         ...state.currentPlanets.map((p, i) => ({ label: `Land on ${p.name}`, key: (i + 1).toString(), action: async (s: any) => ({ ...s, selectedPlanetId: p.id, currentScene: 'planet_surface' }) })),
+        ...npcs.map((n, i) => ({ 
+          label: `Hail ${n.name}`, 
+          key: String.fromCharCode(97 + i), // a, b, c...
+          action: async (s: GameState) => ({ ...s, currentScene: 'npc_dialogue', selectedNpcId: n.id, lastMessage: `Hailing ${n.name}...` }) 
+        })),
         { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => (s.player!.credits >= 500 ? { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed.' } : { ...s, lastMessage: 'No credits!' }) },
-        ...(state.currentPlanets.length === 0 && !stations.find(ss => ss.playerId === state.player?.id) ? [{ 
-          label: 'Establish Outpost (50,000 cr)', 
-          key: 'O', 
+        ...(state.currentPlanets.length === 0 && !stations.find(ss => ss.playerId === state.player?.id) ? [{
+          label: 'Establish Outpost (50,000 cr)',
+          key: 'O',
           action: async (s: GameState) => {
             if (s.player!.credits >= 50000) return { ...s, lastMessage: `Requesting station:outpost:50000:${state.currentSector?.id}` }
             return { ...s, lastMessage: 'Insufficient credits for a space station!' }
@@ -596,7 +632,6 @@ Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
       ]
     }
   },
-
   planet_surface: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     return {
@@ -948,40 +983,81 @@ LOG: ${log.slice(-1)[0]}
     if (!state.combat) return { title: 'ERROR', description: 'No combat', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }] }
     const { attacker, defender, log } = state.combat
     const isOver = attacker.shields <= 0 || defender.shields <= 0
+    
+    const combatAscii = [
+      "   `%1< %9-`%1X`%9- %1>`%7          `%1< %9-`%1X`%9- %1>`%7",
+      "      `%1\\\\`%7            `%1//`%7",
+      "   `%9~~~~~`%1( )`%9~~~~~`%7",
+      "      `%1//`%7            `%1\\\\`%7",
+      "   `%1< %9-`%1X`%9- %1>`%7          `%1< %9-`%1X`%9- %1>`%7"
+    ]
+
     return {
-      title: '`%1COMBAT` %7',
-      description: `${attacker.name} vs ${defender.name}\n${log.slice(-3).join('\n')}`,
-      options: isOver ? [{ label: 'Leave', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge', combat: null }) }] : [
-        { label: 'Fire', key: 'F', action: async (s) => ({ ...s, combat: processCombatRound(s.combat!) }) },
-        { label: 'Flee', key: 'L', action: async (s) => ({ ...s, combat: null, currentScene: 'bridge' }) }
+      title: '`%1COMBAT ENGAGEMENT` %7',
+      description: `
+  \`%f${attacker.name}\` %7 [Tier ${attacker.shipTier}]
+  Shields: [${attacker.shields}/${attacker.maxShields}]
+  
+  \`%1VS\` %7
+  
+  \`%f${defender.name}\` %7 [Tier ${defender.shipTier}]
+  Shields: [${defender.shields}/${defender.maxShields}]
+
+  \`%bLOG:\` %7
+  ${log.slice(-3).map(l => `> ${l}`).join('\n')}`,
+      ascii: combatAscii,
+      options: isOver ? [{ label: 'Leave Engagement', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge', combat: null }) }] : [
+        { label: 'Fire All Weapons', key: 'F', action: async (s) => ({ ...s, combat: processCombatRound(s.combat!) }) },
+        { label: 'Emergency Flee', key: 'L', action: async (s) => ({ ...s, combat: null, currentScene: 'bridge' }) }
       ]
     }
   },
   death: (state) => ({
-    title: '`%1DESTROYED` %7',
-    description: 'Respawn at home.',
-    options: [{ label: 'Respawn', key: 'R', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
+    title: '`%1SHIP DESTROYED` %7',
+    description: `~%1CRITICAL SYSTEM FAILURE!~%7
+    
+Your ship has been disabled and your crew has evacuated in escape pods. Starfleet recovery teams have picked you up and transported you back to your faction's home base.
+
+Hull integrity: 0%
+Cargo: LOST
+Credits: Insurance payout received (Partial).`,
+    options: [{ label: 'Respawn at Home Base', key: 'R', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
   }),
   messages: (state) => ({
     title: '`%bCOMM LINK` %7',
-    description: 'Open channel.',
-    options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
+    description: `\`%aENCRYPTED CHANNEL OPEN\` %7
+Scanning local frequencies for priority signals...`,
+    options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
   }),
   npc_dialogue: (state) => {
-    const npc = { id: 'npc_vex', name: 'Captain Vex' }
+    const npc = state.currentNpcs.find(n => n.id === state.selectedNpcId)
+    if (!npc) return { title: 'ERROR', description: 'NPC not found in sector.', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }] }
+    
+    const npcAscii = [
+      "   `%e+-------+`%7",
+      "   `%e|  `%f(o o)  `%e|`%7",
+      "   `%e|   `%b---   `%e|`%7",
+      "   `%e+-------+`%7",
+      "     `%e/|   |\\`%7"
+    ]
+
     return {
-      title: `%f${npc.name.toUpperCase()} - THE SMUGGLER`,
-      description: '"Looking for a game, pilot? Or just here to talk?"',
+      title: `%f${npc.name.toUpperCase()} - ${npc.title?.toUpperCase() || 'UNKNOWN'}`,
+      description: `
+\`%bNPC PROFILE:\` %7 ${npc.description || 'What brings you here, pilot?'}
+
+"${npc.description || 'I have things to do, pilot. Speak or leave.'}"`,
+      ascii: npcAscii,
       options: [
         { label: 'Challenge to Card Duel', key: 'D', action: async (s) => {
           if (s.playerDeck.filter(c => c.equipped).length < 1) {
-            return { ...s, lastMessage: 'Vex: "You need to equip some cards in your collection first!"' }
+            return { ...s, lastMessage: `${npc.name}: "You need to equip some cards in your collection first!"` }
           }
           const duel = createDuel(s.player!.name, s.playerDeck, npc.name, dbOps.getAllStarCards().slice(0, 10))
           return { ...s, currentDuel: duel, currentScene: 'card_duel' }
         }},
-        { label: 'Trade Ore', key: 'T', action: async (s) => s },
-        { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+        { label: 'Trade Resources', key: 'T', action: async (s) => ({ ...s, lastMessage: `${npc.name}: "I'm not looking for supplies right now."` }) },
+        { label: 'Leave Frequency', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge', selectedNpcId: null }) }
       ]
     }
   },

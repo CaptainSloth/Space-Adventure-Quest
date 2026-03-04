@@ -15,7 +15,7 @@
 - [x] Pack System: Buy Star Packs at the Bridge Card Shop for 500 cr.
 - [x] Progression: Card Leveling (combining duplicates) and victory prizes implemented.
 
-### Phase 8 — Planet Customization & Economy (75% Verified)
+### Phase 8 — Planet Customization & Economy (100% Verified)
 - [x] Planet Buildings: Construction Bay added with Shipyards, Defense Grids, and more.
 - [x] Personalization: Owners can set custom descriptions and ASCII art for planets.
 - [x] Galaxy Expansion: Deep Space (Sectors 401-500) with Black Holes and Asteroid Fields.
@@ -23,6 +23,8 @@
 - [x] Resource Nodes: Asteroid belts and gas clouds spawned for automated mining.
 - [x] Supply & Demand: Port prices now fluctuate based on stock levels (Ideal: 1000).
 - [x] Economy Recovery: Stocks drift back to base levels during the 10m Galactic Tick.
+- [x] NPC Presence: Key NPCs seeded into the galaxy and interactive via hails.
+- [x] Sector Assets: Deployments (Fighters) now persist and display correctly.
 
 ### 🐛 Bug Fixes
 - [x] Build Error: Fixed single-quote syntax in `datetime('now')` SQL strings.
