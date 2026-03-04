@@ -51,7 +51,9 @@ export const toSerializable = (
   stockHistory?: number[],
   playerDeck?: PlayerCard[],
   allStarCards?: StarCard[],
-  planetBuildings?: any[]
+  planetBuildings?: any[],
+  spaceStations?: any[],
+  resourceNodes?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -79,6 +81,8 @@ export const toSerializable = (
     playerDeck,
     allStarCards,
     planetBuildings,
+    spaceStations,
+    resourceNodes,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -379,15 +383,39 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
       ]
     }
   },
-  sector_view: (state) => ({
-    title: '`%eSECTOR VIEW` %7',
-    description: `Sector: \`%f${state.currentSector?.id}\` %7.`,
-    options: [
-      ...state.currentPlanets.map((p, i) => ({ label: `Land on ${p.name}`, key: (i + 1).toString(), action: async (s: any) => ({ ...s, selectedPlanetId: p.id, currentScene: 'planet_surface' }) })),
-      { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => (s.player!.credits >= 500 ? { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed.' } : { ...s, lastMessage: 'No credits!' }) },
-      { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+  sector_view: (state) => {
+    const deployments = dbOps.getSectorDeployments(state.currentSector!.id)
+    const stations = state.spaceStations || []
+    const nodes = state.resourceNodes || []
+
+    return {
+      title: '`%eSECTOR VIEW` %7',
+      description: `Sector: \`%f${state.currentSector?.id}\` %7.
+
+  \`%bSTATIONS & BASES:\` %7
+  ${stations.length > 0 ? stations.map(s => `- \`%f${s.name}\` %7 (${s.type.toUpperCase()}) [Owner: ${s.ownerName}]`).join('\n') : 'None detected.'}
+
+  \`%bRESOURCE NODES:\` %7
+  ${nodes.length > 0 ? nodes.map(n => `- \`%f${n.type.toUpperCase()}\` %7 (${n.commodity.toUpperCase()}) Abundance: ${n.abundance}`).join('\n') : 'None detected.'}
+
+  \`%bSECTOR ASSETS:\` %7
+  ${deployments.length > 0 ? deployments.map(d => `- \`%f${d.quantity}\` %7 ${d.type}(s)`).join('\n') : 'None detected.'}`,
+      options: [
+        ...state.currentPlanets.map((p, i) => ({ label: `Land on ${p.name}`, key: (i + 1).toString(), action: async (s: any) => ({ ...s, selectedPlanetId: p.id, currentScene: 'planet_surface' }) })),
+        { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => (s.player!.credits >= 500 ? { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed.' } : { ...s, lastMessage: 'No credits!' }) },
+        ...(state.currentPlanets.length === 0 && !stations.find(ss => ss.playerId === state.player?.id) ? [{ 
+          label: 'Establish Outpost (50,000 cr)', 
+          key: 'O', 
+          action: async (s: GameState) => {
+            if (s.player!.credits >= 50000) return { ...s, lastMessage: `Requesting station:outpost:50000:${state.currentSector?.id}` }
+            return { ...s, lastMessage: 'Insufficient credits for a space station!' }
+          }
+        }] : []),
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
+
   planet_surface: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     return {
@@ -413,11 +441,29 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
         }},
         ...(!planet?.hasPort ? [{ label: 'Build Port (10k)', key: 'P', action: async (s: GameState) => (s.player!.credits >= 10000 ? { ...s, lastMessage: `Requesting port construction for ${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) }] : []),
         { label: 'Construction Bay', key: 'C', action: async (s) => ({ ...s, currentScene: 'planet_construction' }) },
+        { label: 'Personalize World', key: 'P', action: async (s) => ({ ...s, currentScene: 'planet_personalize' }) },
         { label: 'Mining', key: 'M', action: async (s) => ({ ...s, currentScene: 'planet_mining' }) },
         { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_surface' }) }
         ]
         }
         },
+        planet_personalize: (state) => {
+        const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
+        return {
+        title: `\`%ePERSONALIZE: ${planet?.name}\` %7`,
+        description: 'Enter a custom description or ASCII art signature for your world.',
+        options: [
+        { label: 'Set Custom Description', key: 'D', action: async (s) => s },
+        { label: 'Set Custom ASCII Art', key: 'A', action: async (s) => s },
+        { label: 'Reset to Defaults', key: 'R', action: async (s) => {
+          dbOps.updatePlanetCustoms(planet!.id, '', '')
+          return { ...s, lastMessage: 'Planet appearance reset.' }
+        }},
+        { label: 'Back to Management', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_manage' }) }
+        ]
+        }
+        },
+
         planet_construction: (state) => {
         const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
         const buildings = state.planetBuildings || []
@@ -638,7 +684,34 @@ LOG: ${log.slice(-1)[0]}
     title: '%cNAVIGATION',
     description: `Sector: ${state.currentSector?.id || 1}`,
     options: [
-      ...(state.currentSector?.warps || []).map((id) => ({ label: `Warp ${id}`, key: id.toString(), action: async (s: any) => (s.player!.turns > 0 ? { ...s, player: { ...s.player!, sectorId: id, turns: s.player!.turns - 1 }, currentScene: 'bridge' } : { ...s, lastMessage: 'No turns!' }) })),
+      ...(state.currentSector?.warps || []).map((id) => ({ 
+        label: `Warp ${id}`, 
+        key: id.toString(), 
+        action: async (s: GameState) => {
+          if (!s.player || s.player.turns <= 0) return { ...s, lastMessage: 'No turns!' }
+          
+          const targetSector = dbOps.getSector(id)
+          let lastMsg = `Warped to Sector ${id}.`
+          let finalSectorId = id
+          let finalPlayer = { ...s.player, turns: s.player.turns - 1 }
+
+          // Hazard: Black Hole
+          if (targetSector.type === 'black_hole') {
+            const randomSector = Math.floor(Math.random() * 500) + 1
+            finalSectorId = randomSector
+            finalPlayer.shields = Math.max(0, finalPlayer.shields - 50)
+            lastMsg = `CRITICAL: Pulled into a Black Hole! You have been spat out in Sector ${randomSector}. Hull integrity compromised.`
+          }
+
+          // Hazard: Asteroid Field
+          if (targetSector.type === 'asteroid_field' && Math.random() < 0.3) {
+            finalPlayer.shields = Math.max(0, finalPlayer.shields - 20)
+            lastMsg = `Hull damage! Navigation through asteroid field resulted in minor collisions.`
+          }
+
+          return { ...s, player: { ...finalPlayer, sectorId: finalSectorId }, currentScene: 'bridge', lastMessage: lastMsg }
+        } 
+      })),
       { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),

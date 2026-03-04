@@ -291,6 +291,28 @@ CREATE TABLE IF NOT EXISTS planet_buildings (
   FOREIGN KEY (planetId) REFERENCES planets(id)
 );
 
+-- Space Stations (Sector-based)
+CREATE TABLE IF NOT EXISTS space_stations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sectorId INTEGER NOT NULL,
+  playerId TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'outpost',      -- 'outpost', 'refinery', 'fortress'
+  level INTEGER DEFAULT 1,
+  builtAt TEXT NOT NULL,
+  FOREIGN KEY (playerId) REFERENCES players(id)
+);
+
+-- Resource Nodes (Sector-based)
+CREATE TABLE IF NOT EXISTS resource_nodes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sectorId INTEGER NOT NULL,
+  type TEXT NOT NULL,               -- 'asteroid_belt', 'gas_cloud'
+  commodity TEXT NOT NULL,          -- 'ore', 'fuel'
+  abundance REAL DEFAULT 1.0,
+  isDepleted BOOLEAN DEFAULT FALSE
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

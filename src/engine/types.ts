@@ -101,6 +101,26 @@ export interface PlanetBuilding {
   builtAt: string
 }
 
+export interface SpaceStation {
+  id: number
+  sectorId: number
+  playerId: string
+  ownerName?: string
+  name: string
+  type: 'outpost' | 'refinery' | 'fortress'
+  level: number
+  builtAt: string
+}
+
+export interface ResourceNode {
+  id: number
+  sectorId: number
+  type: 'asteroid_belt' | 'gas_cloud'
+  commodity: string
+  abundance: number
+  isDepleted: boolean
+}
+
 export interface StarCard {
   id: string
   name: string
@@ -230,6 +250,8 @@ export interface GameState {
   playerDeck: PlayerCard[]
   allStarCards: StarCard[]
   planetBuildings: PlanetBuilding[]
+  spaceStations: SpaceStation[]
+  resourceNodes: ResourceNode[]
   adminBuilder?: {
     templateId?: string
     prefixId?: number
@@ -306,6 +328,8 @@ export interface SerializableSceneViewModel {
   playerDeck?: PlayerCard[]
   allStarCards?: StarCard[]
   planetBuildings?: PlanetBuilding[]
+  spaceStations?: SpaceStation[]
+  resourceNodes?: ResourceNode[]
   currentDuel?: DuelState | null
 }
 

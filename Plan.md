@@ -1251,8 +1251,12 @@ content/base/
 ### Phase 8 — Planet Customization & Economy
 > Deep planet management and economy tuning
 
-- [ ] Planet buildings (shipyard, defense grid, sensor array, cantina, etc.)
-- [ ] Planet custom ASCII art & descriptions
+- [x] Planet buildings (shipyard, defense grid, sensor array, cantina, etc.)
+- [x] Planet custom ASCII art & descriptions
+- [x] Deep Space Sectors: Unmapped sectors with higher risks/rewards.
+- [x] Black Holes & Anomalies: Hazards that can damage ships or provide warp shortcuts.
+- [x] Space Stations: Player-buildable outposts in empty sectors.
+- [x] Resource Nodes: Asteroid belts and gas clouds for automated mining.
 - [ ] Advanced economy (supply/demand curves, inflation, trade route optimization)
 - [ ] Contraband/smuggling system
 - [ ] Black market locations

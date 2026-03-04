@@ -161,6 +161,31 @@ export function initDb(): void {
       )
     `)
   }
+
+  // Space Stations Migration
+  const hasStations = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='space_stations'").get()
+  if (!hasStations) {
+    console.log('Migrating: Adding space_stations and resource_nodes...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS space_stations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sectorId INTEGER NOT NULL,
+        playerId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'outpost',
+        level INTEGER DEFAULT 1,
+        builtAt TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS resource_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sectorId INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        commodity TEXT NOT NULL,
+        abundance REAL DEFAULT 1.0,
+        isDepleted BOOLEAN DEFAULT FALSE
+      );
+    `)
+  }
 }
 
 export function getDb(): Database.Database {
@@ -348,5 +373,38 @@ export const dbOps = {
   },
   upgradeBuilding: (buildingId: number) => {
     return db.prepare('UPDATE planet_buildings SET level = level + 1 WHERE id = ?').run(buildingId)
+  },
+  updatePlanetCustoms: (planetId: string, description: string, ascii: string) => {
+    return db.prepare('UPDATE planets SET customDescription = ?, customAscii = ? WHERE id = ?').run(description, ascii, planetId)
+  },
+  getSpaceStations: (sectorId: number) => {
+    return db.prepare('SELECT ss.*, p.name as ownerName FROM space_stations ss JOIN players p ON ss.playerId = p.id WHERE ss.sectorId = ?').all(sectorId)
+  },
+  addSpaceStation: (sectorId: number, playerId: string, name: string, type: string) => {
+    return db.prepare(`
+      INSERT INTO space_stations (sectorId, playerId, name, type, builtAt)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(sectorId, playerId, name, type)
+  },
+  getResourceNodes: (sectorId: number) => {
+    return db.prepare('SELECT * FROM resource_nodes WHERE sectorId = ? AND isDepleted = 0').all(sectorId)
+  },
+  processAutomatedMining: () => {
+    // For every refinery/outpost SS, check if sector has nodes
+    const stations = db.prepare('SELECT sectorId, playerId FROM space_stations').all() as any[]
+    const nodes = db.prepare('SELECT * FROM resource_nodes WHERE isDepleted = 0').all() as any[]
+    
+    db.transaction(() => {
+      stations.forEach(s => {
+        const localNodes = nodes.filter(n => n.sectorId === s.sectorId)
+        localNodes.forEach(node => {
+          const yieldAmount = Math.floor(10 * node.abundance)
+          dbOps.updatePlayerCargo(s.playerId, node.commodity, yieldAmount)
+          // abundance decay
+          db.prepare('UPDATE resource_nodes SET abundance = abundance - 0.05 WHERE id = ?').run(node.id)
+          if (node.abundance <= 0.05) db.prepare('UPDATE resource_nodes SET isDepleted = 1 WHERE id = ?').run(node.id)
+        })
+      })
+    })()
   }
 }
