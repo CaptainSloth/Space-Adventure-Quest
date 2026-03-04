@@ -107,6 +107,11 @@ export function initDb(): void {
         acquiredAt TEXT NOT NULL
       );
     `)
+  } else {
+    const cardCols = db.prepare("PRAGMA table_info(star_cards)").all() as any[]
+    if (!cardCols.some(c => c.name === 'preferredRow')) {
+      db.prepare("ALTER TABLE star_cards ADD COLUMN preferredRow TEXT DEFAULT 'any'").run()
+    }
   }
 
   // Seed Cards
@@ -168,13 +173,13 @@ export function initDb(): void {
     `)
   }
 
-  // Space Stations Migration
-  const hasStations = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='space_stations'").get()
-  if (!hasStations) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS space_stations (id INTEGER PRIMARY KEY AUTOINCREMENT, sectorId INTEGER NOT NULL, playerId TEXT NOT NULL, name TEXT NOT NULL, type TEXT DEFAULT 'outpost', level INTEGER DEFAULT 1, builtAt TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS resource_nodes (id INTEGER PRIMARY KEY AUTOINCREMENT, sectorId INTEGER NOT NULL, type TEXT NOT NULL, commodity TEXT NOT NULL, abundance REAL DEFAULT 1.0, isDepleted BOOLEAN DEFAULT FALSE);
-    `)
+  // Check for lastLoginAt column
+  const playerCols = db.prepare("PRAGMA table_info(players)").all() as any[]
+  if (!playerCols.some(col => col.name === 'lastLoginAt')) {
+    db.prepare("ALTER TABLE players ADD COLUMN lastLoginAt TEXT").run()
+  }
+  if (!playerCols.some(col => col.name === 'isBanned')) {
+    db.prepare("ALTER TABLE players ADD COLUMN isBanned BOOLEAN DEFAULT FALSE").run()
   }
 
   // Check for isBanned column

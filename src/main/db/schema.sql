@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS players (
   lastResetAt TEXT,
   lastSeen TEXT,                       -- heartbeat for online detection
   isAdmin BOOLEAN DEFAULT FALSE,
+  isBanned BOOLEAN DEFAULT FALSE,
   companyId TEXT,
   deck TEXT DEFAULT '[]',              -- CCG deck (JSON array of card IDs)
   weaponLevel INTEGER DEFAULT 1,

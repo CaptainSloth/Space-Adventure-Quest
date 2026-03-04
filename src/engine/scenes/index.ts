@@ -338,6 +338,155 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
   }),
   admin_players: (state) => {
     const players = dbOps.getAllPlayers()
+      { label: 'Planet Registry', key: 'L', action: async (s) => ({ ...s, currentScene: 'admin_planets' }) },
+      { label: 'Galaxy Editor', key: 'G', action: async (s) => ({ ...s, currentScene: 'admin_galaxy' }) },
+      { label: 'Economy Dashboard', key: 'E', action: async (s) => ({ ...s, currentScene: 'admin_economy' }) },
+      { label: 'Star Card Editor', key: 'C', action: async (s) => ({ ...s, currentScene: 'admin_cards' }) },
+      { label: 'Event Triggers', key: 'V', action: async (s) => ({ ...s, currentScene: 'admin_events' }) },
+      { label: 'Company Control', key: 'O', action: async (s) => ({ ...s, currentScene: 'admin_companies' }) },
+      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+    ]
+  }),
+  admin_world: (state) => {
+    const settings = dbOps.getWorldSettings() as any[]
+    return {
+      title: '`%1ADMIN: WORLD CONFIGURATION` %7',
+      description: 'Modify global game parameters and behavior.',
+      options: [
+        ...settings.map((s, i) => ({
+          label: `Edit ${s.key}: ${s.value}`,
+          key: (i + 1).toString(),
+          action: async (st: GameState) => ({ ...st, currentScene: 'admin_setting_edit', selectedPlanetId: s.key }) // Use field for key
+        })),
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  admin_setting_edit: (state) => {
+    const key = state.selectedPlanetId
+    const val = dbOps.getSetting(key!)
+    return {
+      title: `\`%1ADMIN: EDIT SETTING [${key?.toUpperCase()}]\` %7`,
+      description: `Current Value: \`%f${val?.value || 'NULL'}\` %7`,
+      options: [
+        { label: 'Set Value', key: 'S', action: async (s) => s }, // Input handled in App.tsx
+        { label: 'Back to World', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_world' }) }
+      ]
+    }
+  },
+  admin_players: (state) => {
+    const players = dbOps.getAllPlayers()
+    return {
+      title: '`%1ADMIN: PLAYER MANAGEMENT` %7',
+      description: `Registered Pilots: \`%f${players.length}\` %7`,
+      options: [
+        ...players.slice(0, 10).map((p, i) => ({
+          label: `Edit ${p.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => ({ ...s, currentScene: 'admin_player_edit', selectedPlanetId: p.id }) // Reuse field for playerId
+        })),
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  admin_player_edit: (state) => {
+    const playerId = state.selectedPlanetId
+    const p = dbOps.getPlayer(playerId!) as any
+    if (!p) return { title: 'ERROR', description: 'Player not found', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_players' }) }] }
+
+    return {
+      title: `\`%1ADMIN: EDITING ${p.name.toUpperCase()}\` %7`,
+      description: `
+Credits: \`%e${p.credits}\` %7
+Alignment: ${p.alignment}
+Faction: ${p.faction.toUpperCase()}
+Sector: ${p.sectorId}
+Turns: ${p.turns} / ${p.maxTurns}
+Status: ${p.isBanned ? '%1BANNED%7' : '%aACTIVE%7'}
+`,
+      options: [
+        { label: 'Grant 10,000 Credits', key: 'C', action: async (s) => {
+          dbOps.updatePlayerCredits(p.id, 10000)
+          return { ...s, lastMessage: `Granted 10k to ${p.name}.` }
+        }},
+        { label: 'Shift Alignment (+100)', key: 'A', action: async (s) => {
+          dbOps.setPlayerAlignment(p.id, p.alignment + 100)
+          return { ...s, lastMessage: `Alignment shifted for ${p.name}.` }
+        }},
+        { label: 'Refill Daily Turns', key: 'T', action: async (s) => {
+          dbOps.refillPlayerTurns(p.id)
+          return { ...s, lastMessage: `Turns reset for ${p.name}.` }
+        }},
+        { label: p.isBanned ? 'UNBAN PLAYER' : 'BAN PLAYER', key: 'X', action: async (s) => {
+          dbOps.setPlayerBanned(p.id, !p.isBanned)
+          return { ...s, lastMessage: `Ban status toggled for ${p.name}.` }
+        }},
+        { label: 'Back to List', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_players' }) }
+      ]
+    }
+  },
+  admin_galaxy: (state) => {
+    const startId = (state as any).adminPage || 1
+    const sectors = []
+    for (let i = startId; i < startId + 10; i++) {
+      const s = dbOps.getSector(i)
+      if (s) sectors.push(s)
+    }
+
+    return {
+      title: '`%1ADMIN: GALAXY EDITOR` %7',
+      description: `Sectors ${startId} - ${startId + 9}:`,
+      options: [
+        ...sectors.map((s, i) => ({
+          label: `Edit Sec ${s.id}: ${s.name || 'Unnamed'} (${s.type})`,
+          key: (i + 1).toString(),
+          action: async (st: GameState) => ({ ...st, currentScene: 'admin_sector_edit', selectedPlanetId: s.id.toString() })
+        })),
+        { label: 'Next Page', key: 'N', action: async (s) => ({ ...s, adminPage: (startId + 10) % 500 }) },
+        { label: 'Prev Page', key: 'P', action: async (s) => ({ ...s, adminPage: Math.max(1, startId - 10) }) },
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin', adminPage: undefined }) }
+      ]
+    }
+  },
+  admin_sector_edit: (state) => {
+    const sectorId = parseInt(state.selectedPlanetId!)
+    const s = dbOps.getSector(sectorId)
+    const warps = JSON.parse(s.warps) as number[]
+
+    return {
+      title: `\`%1ADMIN: EDITING SECTOR ${sectorId}\` %7`,
+      description: `
+Name: ${s.name || 'Unnamed'}
+Type: \`%b${s.type.toUpperCase()}\` %7
+Warps: ${warps.join(', ')}
+Port Type: ${s.portType || 'None'}
+`,
+      options: [
+        { label: 'Toggle Type (Nebula/Asteroid/BH)', key: 'T', action: async (st) => {
+          const types = ['normal', 'nebula', 'asteroid_field', 'black_hole']
+          const currentIdx = types.indexOf(s.type)
+          const nextType = types[(currentIdx + 1) % types.length]
+          dbOps.updateSectorType(sectorId, nextType)
+          return { ...st, lastMessage: `Sector type set to ${nextType}.` }
+        }},
+        { label: 'Add Warp to Sec 1', key: 'W', action: async (st) => {
+          if (!warps.includes(1)) {
+            warps.push(1)
+            dbOps.updateSectorWarps(sectorId, JSON.stringify(warps))
+            return { ...st, lastMessage: 'Warp to Sector 1 established.' }
+          }
+          return { ...st, lastMessage: 'Warp already exists.' }
+        }},
+        { label: 'Clear All Warps', key: 'C', action: async (st) => {
+          dbOps.updateSectorWarps(sectorId, JSON.stringify([]))
+          return { ...st, lastMessage: 'Sector isolated. All warps cleared.' }
+        }},
+        { label: 'Back to List', key: 'B', action: async (st) => ({ ...st, currentScene: 'admin_galaxy' }) }
+      ]
+    }
+  },
+  admin_cards: (state) => {
+    const cards = dbOps.getAllStarCards() as any[]
     return {
       title: '`%1ADMIN: PLAYER MANAGEMENT` %7',
       description: `Registered Pilots: \`%f${players.length}\` %7`,
@@ -390,6 +539,40 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
       options: [
         { label: 'Set Value', key: 'S', action: async (s) => s },
         { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_world' }) }
+  admin_economy: (state) => {
+    const stats = dbOps.getEconomyStats()
+    return {
+      title: '`%1ADMIN: ECONOMY DASHBOARD` %7',
+      description: `
+GALAXY-WIDE STATISTICS:
+Total Pilot Credits: \`%e${stats.totalCredits}\` %7
+Total Cargo Units: \`%f${stats.totalCargo}\` %7
+Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
+`,
+      options: [
+        { label: 'Adjust Base Prices', key: 'P', action: async (s) => ({ ...s, lastMessage: 'Base price editing coming soon.' }) },
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  admin_events: (state) => {
+    return {
+      title: '`%1ADMIN: EVENT TRIGGERS` %7',
+      description: 'Select an event to manually trigger for all online pilots.',
+      options: [
+        { label: 'Spawn Solar Flare', key: '1', action: async (s) => {
+          dbOps.triggerManualEvent('SOLAR_FLARE', 'A massive solar flare is disrupting warp signatures!')
+          return { ...s, lastMessage: 'Event triggered.' }
+        }},
+        { label: 'Spawn Merchant Convoy', key: '2', action: async (s) => {
+          dbOps.triggerManualEvent('CONVOY', 'A high-value merchant convoy has entered neutral space!')
+          return { ...s, lastMessage: 'Event triggered.' }
+        }},
+        { label: 'Reset Global Prices', key: '3', action: async (s) => {
+          dbOps.processEconomyRecovery()
+          return { ...s, lastMessage: 'Market stocks reset toward baseline.' }
+        }},
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
       ]
     }
   },
