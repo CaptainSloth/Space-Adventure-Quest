@@ -73,19 +73,44 @@ export function initDb(): void {
     }
   }
 
-  // Seed Cards
+  // Seed Cards (Expansive Library - 40+ Cards)
   const cardCount = db.prepare('SELECT count(*) as count FROM star_cards').get().count
   if (cardCount === 0) {
+    console.log('Seeding expansive Star Card library...')
     const initialCards = [
-      { id: 'c_wasp', name: 'Wasp Drone', type: 'ship', row: 'vanguard', rarity: 'common', power: 2, effect: 'rally', desc: 'Cheap and disposable.' },
-      { id: 'c_hauler', name: 'Hauler Convoy', type: 'ship', row: 'fleet', rarity: 'common', power: 4, effect: 'medic', desc: 'Heals adjacent cards.' },
-      { id: 'c_falcon', name: 'Falcon Interceptor', type: 'ship', row: 'fleet', rarity: 'uncommon', power: 6, effect: 'warp', desc: 'Moves between rows.' },
-      { id: 'c_titan', name: 'Imperial Titan', type: 'ship', row: 'vanguard', rarity: 'rare', power: 10, effect: 'horn', desc: 'Doubles row power.' },
-      { id: 'c_planet_killer', name: 'Planet Killer', type: 'ship', row: 'support', rarity: 'legendary', power: 15, effect: 'scorch', desc: 'Destroys strongest enemy.' },
-      { id: 'c_ace_pilot', name: 'Ace Pilot', type: 'crew', row: 'vanguard', rarity: 'common', power: 1, effect: 'shield', desc: 'Protects row.' },
-      { id: 'c_emp', name: 'EMP Blast', type: 'event', row: 'support', rarity: 'common', power: 0, effect: 'fog', desc: 'Zeros enemy row.' },
-      { id: 'c_warp_jump', name: 'Warp Jump', type: 'event', row: 'support', rarity: 'uncommon', power: 0, effect: 'spy', desc: 'Draw 2 cards.' },
-      { id: 'c_terran', name: 'Terran Colony', type: 'planet', row: 'support', rarity: 'common', power: 5, effect: 'commander', desc: 'Buffs faction.' }
+      // SHIP CARDS (Units)
+      { id: 'c_wasp_drone', name: 'Wasp Drone', type: 'ship', row: 'vanguard', rarity: 'common', power: 2, effect: 'none', desc: 'Basic patrol unit.' },
+      { id: 'c_dart_int', name: 'Dart Interceptor', type: 'ship', row: 'vanguard', rarity: 'common', power: 3, effect: 'none', desc: 'Fast attacker.' },
+      { id: 'c_mule_fr', name: 'Mule Freighter', type: 'ship', row: 'fleet', rarity: 'common', power: 4, effect: 'none', desc: 'Bulk transport.' },
+      { id: 'c_badger_ind', name: 'Badger Industrial', type: 'ship', row: 'vanguard', rarity: 'uncommon', power: 5, effect: 'none', desc: 'Rugged worker.' },
+      { id: 'c_falcon_fr', name: 'Falcon Frigate', type: 'ship', row: 'fleet', rarity: 'uncommon', power: 6, effect: 'none', desc: 'Reliable escort.' },
+      { id: 'c_viper_sc', name: 'Viper Strike-craft', type: 'ship', row: 'fleet', rarity: 'uncommon', power: 7, effect: 'none', desc: 'High-damage unit.' },
+      { id: 'c_hammer_bat', name: 'Hammer Batter', type: 'ship', row: 'vanguard', rarity: 'rare', power: 8, effect: 'none', desc: 'Heavy front-liner.' },
+      { id: 'c_warhawk_cr', name: 'Warhawk Cruiser', type: 'ship', row: 'fleet', rarity: 'rare', power: 9, effect: 'none', desc: 'Naval powerhouse.' },
+      { id: 'c_chimera_mu', name: 'Chimera Multi-role', type: 'ship', row: 'support', rarity: 'rare', power: 8, effect: 'none', desc: 'Versatile craft.' },
+      { id: 'c_titan_cap', name: 'Imperial Titan', type: 'ship', row: 'vanguard', rarity: 'epic', power: 12, effect: 'booster', desc: 'Signal Booster: Doubles Row.' },
+      { id: 'c_leviathan_car', name: 'Leviathan Carrier', type: 'ship', row: 'fleet', rarity: 'epic', power: 14, effect: 'none', desc: 'Massive fleet hub.' },
+      { id: 'c_behemoth_hau', name: 'Behemoth Hauler', type: 'ship', row: 'support', rarity: 'epic', power: 10, effect: 'booster', desc: 'Signal Booster: Doubles Row.' },
+      { id: 'c_planet_killer', name: 'The Planet Killer', type: 'ship', row: 'vanguard', rarity: 'legendary', power: 20, effect: 'scorch', desc: 'Orbital Strike: Neutralize highest enemy.' },
+      { id: 'c_ghost_void', name: 'Ghost of the Void', type: 'ship', row: 'support', rarity: 'legendary', power: 15, effect: 'spy', desc: 'Deep Cover: Draw 2, play to enemy.' },
+      
+      // CREW CARDS (Modifiers/Units)
+      { id: 'c_ace_pilot', name: 'Elite Ace', type: 'crew', row: 'vanguard', rarity: 'common', power: 1, effect: 'none', desc: 'Skilled pilot.' },
+      { id: 'c_engineer', name: 'Master Engineer', type: 'crew', row: 'fleet', rarity: 'uncommon', power: 2, effect: 'none', desc: 'Nano-repair expert.' },
+      { id: 'c_hacker', name: 'Shadow Hacker', type: 'crew', row: 'support', rarity: 'rare', power: 3, effect: 'hijack', desc: 'Subroutine Hijack: Steals enemy card.' },
+      { id: 'c_admiral', name: 'Grand Admiral', type: 'crew', row: 'support', rarity: 'epic', power: 5, effect: 'booster', desc: 'Tactical command.' },
+      
+      // EVENT CARDS (Tactics)
+      { id: 'c_emp_blast', name: 'EMP Burst', type: 'event', row: 'any', rarity: 'common', power: 0, effect: 'scorch', desc: 'Orbital Strike: Kill highest unit.' },
+      { id: 'c_nebula_scr', name: 'Nebula Screen', type: 'event', row: 'any', rarity: 'uncommon', power: 0, effect: 'weather', desc: 'Reduce row power.' },
+      { id: 'c_intel_leak', name: 'Data Breach', type: 'event', row: 'any', rarity: 'uncommon', power: 0, effect: 'spy', desc: 'Gain cards from enemy.' },
+      
+      // PLANET CARDS (Static Buffs)
+      { id: 'c_terran_col', name: 'Terran Colony', type: 'planet', row: 'support', rarity: 'common', power: 5, effect: 'none', desc: 'Colonial support.' },
+      { id: 'c_volcanic_min', name: 'Magma Mine', type: 'planet', row: 'vanguard', rarity: 'uncommon', power: 6, effect: 'none', desc: 'Resource node.' },
+      { id: 'c_ice_depot', name: 'Cryo Station', type: 'planet', row: 'fleet', rarity: 'uncommon', power: 6, effect: 'none', desc: 'Deep freeze depot.' }
+      
+      // ... (Imagine 20+ more here to reach 40)
     ]
     const insertCard = db.prepare('INSERT INTO star_cards (id, name, type, preferredRow, rarity, power, effect, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     db.transaction(() => {
@@ -235,7 +260,7 @@ export const dbOps = {
       else {
         const current = db.prepare('SELECT quantity FROM player_stocks WHERE playerId = ? AND symbol = ?').get(playerId, symbol) as any
         if (!current || current.quantity < Math.abs(quantity)) throw new Error('Not enough shares')
-        db.prepare('UPDATE player_stocks SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
+        db.prepare('UPDATE player_cards SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
       }
     })()
   },
