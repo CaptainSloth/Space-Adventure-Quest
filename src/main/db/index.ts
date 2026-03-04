@@ -80,6 +80,11 @@ export function initDb(): void {
         acquiredAt TEXT NOT NULL
       );
     `)
+  } else {
+    const cardCols = db.prepare("PRAGMA table_info(star_cards)").all() as any[]
+    if (!cardCols.some(c => c.name === 'preferredRow')) {
+      db.prepare("ALTER TABLE star_cards ADD COLUMN preferredRow TEXT DEFAULT 'any'").run()
+    }
   }
 
   // Seed Cards
@@ -128,12 +133,9 @@ export function initDb(): void {
   // Check for lastLoginAt column
   const playerCols = db.prepare("PRAGMA table_info(players)").all() as any[]
   if (!playerCols.some(col => col.name === 'lastLoginAt')) {
-    console.log('Migrating: Adding lastLoginAt to players...')
     db.prepare("ALTER TABLE players ADD COLUMN lastLoginAt TEXT").run()
   }
-
   if (!playerCols.some(col => col.name === 'isBanned')) {
-    console.log('Migrating: Adding isBanned to players...')
     db.prepare("ALTER TABLE players ADD COLUMN isBanned BOOLEAN DEFAULT FALSE").run()
   }
 }
@@ -147,6 +149,8 @@ export const dbOps = {
   getPlayer: (id: string) => db.prepare('SELECT * FROM players WHERE id = ?').get(id),
   createPlayer: (player: any) => db.prepare(`INSERT INTO players (id, name, faction, alignment, credits, turns, maxTurns, createdAt) VALUES (@id, @name, @faction, @alignment, @credits, @turns, @maxTurns, @createdAt)`).run(player),
   getSector: (id: number) => db.prepare('SELECT * FROM sectors WHERE id = ?').get(id),
+  updateSectorType: (id: number, type: string) => db.prepare('UPDATE sectors SET type = ? WHERE id = ?').run(type, id),
+  updateSectorWarps: (id: number, warps: string) => db.prepare('UPDATE sectors SET warps = ? WHERE id = ?').run(warps, id),
   updatePlayerSector: (playerId: string, sectorId: number) => db.prepare('UPDATE players SET sectorId = ?, turns = turns - 1 WHERE id = ?').run(sectorId, playerId),
   getAllPlayers: () => db.prepare('SELECT id, name FROM players').all(),
   getPlanetsBySector: (sectorId: number) => db.prepare(`SELECT p.*, pl.name as ownerName FROM planets p LEFT JOIN players pl ON p.ownerId = pl.id WHERE p.sectorId = ?`).all(sectorId),
@@ -184,8 +188,8 @@ export const dbOps = {
   updatePlayerShip: (playerId: string, shipId: string) => db.prepare('UPDATE players SET shipId = ? WHERE id = ?').run(shipId, playerId),
   resetAllNpcCooldowns: () => db.prepare("DELETE FROM world_settings WHERE key LIKE 'cooldown_npc_%'").run(),
   setPlayerAlignment: (playerId: string, alignment: number) => db.prepare('UPDATE players SET alignment = ? WHERE id = ?').run(alignment, playerId),
-  refillPlayerTurns: (playerId: string) => db.prepare('UPDATE players SET turns = maxTurns WHERE id = ?').run(playerId),
   setPlayerBanned: (playerId: string, isBanned: boolean) => db.prepare('UPDATE players SET isBanned = ? WHERE id = ?').run(isBanned ? 1 : 0, playerId),
+  refillPlayerTurns: (playerId: string) => db.prepare('UPDATE players SET turns = maxTurns WHERE id = ?').run(playerId),
   updatePlayerHeartbeat: (playerId: string) => db.prepare("UPDATE players SET lastSeen = datetime('now') WHERE id = ?").run(playerId),
   updatePlayerLastLogin: (playerId: string) => db.prepare("UPDATE players SET lastLoginAt = datetime('now') WHERE id = ?").run(playerId),
   getOnlinePlayersInSector: (sectorId: number, excludePlayerId: string) => db.prepare(`SELECT id, name, faction, alignment, shipId, level FROM players WHERE sectorId = ? AND id != ? AND lastSeen > datetime('now', '-120 seconds')`).all(sectorId, excludePlayerId),
@@ -284,124 +288,57 @@ export const dbOps = {
     }
     return drawn
   },
-  addStarCardDefinition: (card: any) => {
-    return db.prepare(`
-      INSERT INTO star_cards (id, name, type, preferredRow, rarity, power, effect, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(card.id, card.name, card.type, card.preferredRow, card.rarity, card.power, card.effect, card.description)
-  },
-  updateStarCardDefinition: (id: string, card: any) => {
-    return db.prepare(`
-      UPDATE star_cards 
-      SET name = ?, type = ?, preferredRow = ?, rarity = ?, power = ?, effect = ?, description = ?
-      WHERE id = ?
-    `).run(card.name, card.type, card.preferredRow, card.rarity, card.power, card.effect, card.description, id)
-  },
-  deleteStarCardDefinition: (id: string) => {
-    return db.prepare('DELETE FROM star_cards WHERE id = ?').run(id)
-  },
+  addStarCardDefinition: (card: any) => db.prepare(`INSERT INTO star_cards (id, name, type, preferredRow, rarity, power, effect, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(card.id, card.name, card.type, card.preferredRow, card.rarity, card.power, card.effect, card.description),
+  updateStarCardDefinition: (id: string, card: any) => db.prepare(`UPDATE star_cards SET name = ?, type = ?, preferredRow = ?, rarity = ?, power = ?, effect = ?, description = ? WHERE id = ?`).run(card.name, card.type, card.preferredRow, card.rarity, card.power, card.effect, card.description, id),
+  deleteStarCardDefinition: (id: string) => db.prepare('DELETE FROM star_cards WHERE id = ?').run(id),
   combineCards: (playerId: string, cardId: string) => {
     const instances = db.prepare('SELECT id FROM player_cards WHERE playerId = ? AND cardId = ? AND level = 1 LIMIT 2').all(playerId, cardId)
     if (instances.length < 2) throw new Error('Need at least 2 Level 1 cards to combine.')
-    
-    return db.transaction(() => {
-      // Delete one, upgrade the other
-      db.prepare('DELETE FROM player_cards WHERE id = ?').run(instances[1].id)
-      db.prepare('UPDATE player_cards SET level = level + 1 WHERE id = ?').run(instances[0].id)
-    })()
+    return db.transaction(() => { db.prepare('DELETE FROM player_cards WHERE id = ?').run(instances[1].id); db.prepare('UPDATE player_cards SET level = level + 1 WHERE id = ?').run(instances[0].id) })()
   },
-  transferCard: (instanceId: number, fromPlayerId: string, toPlayerId: string) => {
-    return db.prepare('UPDATE player_cards SET playerId = ?, equipped = 0 WHERE id = ? AND playerId = ?').run(toPlayerId, instanceId, fromPlayerId)
-  },
-  getPlanetBuildings: (planetId: string) => {
-    return db.prepare('SELECT * FROM planet_buildings WHERE planetId = ?').all(planetId)
-  },
-  buildOnPlanet: (planetId: string, type: string) => {
-    return db.prepare(`
-      INSERT INTO planet_buildings (planetId, type, builtAt)
-      VALUES (?, ?, datetime('now'))
-    `).run(planetId, type)
-  },
-  upgradeBuilding: (buildingId: number) => {
-    return db.prepare('UPDATE planet_buildings SET level = level + 1 WHERE id = ?').run(buildingId)
-  },
-  updatePlanetCustoms: (planetId: string, description: string, ascii: string) => {
-    return db.prepare('UPDATE planets SET customDescription = ?, customAscii = ? WHERE id = ?').run(description, ascii, planetId)
-  },
-  getSpaceStations: (sectorId: number) => {
-    return db.prepare('SELECT ss.*, p.name as ownerName FROM space_stations ss JOIN players p ON ss.playerId = p.id WHERE ss.sectorId = ?').all(sectorId)
-  },
-  addSpaceStation: (sectorId: number, playerId: string, name: string, type: string) => {
-    return db.prepare(`
-      INSERT INTO space_stations (sectorId, playerId, name, type, builtAt)
-      VALUES (?, ?, ?, ?, datetime('now'))
-    `).run(sectorId, playerId, name, type)
-  },
-  getResourceNodes: (sectorId: number) => {
-    return db.prepare('SELECT * FROM resource_nodes WHERE sectorId = ? AND isDepleted = 0').all(sectorId)
-  },
+  transferCard: (instanceId: number, fromPlayerId: string, toPlayerId: string) => db.prepare('UPDATE player_cards SET playerId = ?, equipped = 0 WHERE id = ? AND playerId = ?').run(toPlayerId, instanceId, fromPlayerId),
+  getPlanetBuildings: (planetId: string) => db.prepare('SELECT * FROM planet_buildings WHERE planetId = ?').all(planetId),
+  buildOnPlanet: (planetId: string, type: string) => db.prepare(`INSERT INTO planet_buildings (planetId, type, builtAt) VALUES (?, ?, datetime('now'))`).run(planetId, type),
+  upgradeBuilding: (buildingId: number) => db.prepare('UPDATE planet_buildings SET level = level + 1 WHERE id = ?').run(buildingId),
+  updatePlanetCustoms: (planetId: string, description: string, ascii: string) => db.prepare('UPDATE planets SET customDescription = ?, customAscii = ? WHERE id = ?').run(description, ascii, planetId),
+  getSpaceStations: (sectorId: number) => db.prepare('SELECT ss.*, p.name as ownerName FROM space_stations ss JOIN players p ON ss.playerId = p.id WHERE ss.sectorId = ?').all(sectorId),
+  addSpaceStation: (sectorId: number, playerId: string, name: string, type: string) => db.prepare(`INSERT INTO space_stations (sectorId, playerId, name, type, builtAt) VALUES (?, ?, ?, ?, datetime('now'))`).run(sectorId, playerId, name, type),
+  getResourceNodes: (sectorId: number) => db.prepare('SELECT * FROM resource_nodes WHERE sectorId = ? AND isDepleted = 0').all(sectorId),
   processAutomatedMining: () => {
     const stations = db.prepare('SELECT sectorId, playerId FROM space_stations').all() as any[]
     const nodes = db.prepare('SELECT * FROM resource_nodes WHERE isDepleted = 0').all() as any[]
-    
     db.transaction(() => {
       stations.forEach(s => {
         const localNodes = nodes.filter(n => n.sectorId === s.sectorId)
-        localNodes.forEach(node => {
-          const yieldAmount = Math.floor(10 * node.abundance)
-          dbOps.updatePlayerCargo(s.playerId, node.commodity, yieldAmount)
-          db.prepare('UPDATE resource_nodes SET abundance = abundance - 0.05 WHERE id = ?').run(node.id)
-          if (node.abundance <= 0.05) db.prepare('UPDATE resource_nodes SET isDepleted = 1 WHERE id = ?').run(node.id)
-        })
+        localNodes.forEach(node => { const yieldAmount = Math.floor(10 * node.abundance); dbOps.updatePlayerCargo(s.playerId, node.commodity, yieldAmount); db.prepare('UPDATE resource_nodes SET abundance = abundance - 0.05 WHERE id = ?').run(node.id); if (node.abundance <= 0.05) db.prepare('UPDATE resource_nodes SET isDepleted = 1 WHERE id = ?').run(node.id) })
       })
     })()
   },
-  updateSectorPortInventory: (sectorId: number, inventory: string) => {
-    return db.prepare('UPDATE sectors SET portInventory = ? WHERE id = ?').run(inventory, sectorId)
-  },
+  updateSectorPortInventory: (sectorId: number, inventory: string) => db.prepare('UPDATE sectors SET portInventory = ? WHERE id = ?').run(inventory, sectorId),
   processEconomyRecovery: () => {
     const sectors = db.prepare('SELECT id, portType, portInventory FROM sectors WHERE portInventory IS NOT NULL').all() as any[]
     db.transaction(() => {
       sectors.forEach(s => {
-        const inv = JSON.parse(s.portInventory)
-        let changed = false
-        Object.keys(inv).forEach(comm => {
-          const item = inv[comm]
-          // Stocks drift toward 1000
-          if (item.stock < 1000) { item.stock += 10; changed = true }
-          else if (item.stock > 1000) { item.stock -= 10; changed = true }
-        })
-        if (changed) {
-          dbOps.updateSectorPortInventory(s.id, JSON.stringify(inv))
-        }
+        const inv = JSON.parse(s.portInventory); let changed = false; Object.keys(inv).forEach(comm => { const item = inv[comm]; if (item.stock < 1000) { item.stock += 10; changed = true }; if (item.stock > 1000) { item.stock -= 10; changed = true } }); if (changed) dbOps.updateSectorPortInventory(s.id, JSON.stringify(inv))
       })
     })()
   },
-  getRecentNews: (limit: number = 10) => {
-    return db.prepare('SELECT * FROM news ORDER BY id DESC LIMIT ?').all(limit)
-  },
-  addNewsItem: (headline: string, body: string, category: string = 'GENERAL') => {
-    return db.prepare("INSERT INTO news (headline, body, category, createdAt) VALUES (?, ?, ?, datetime('now'))").run(headline, body, category)
-  },
+  getRecentNews: (limit: number = 10) => db.prepare('SELECT * FROM news ORDER BY id DESC LIMIT ?').all(limit),
+  addNewsItem: (headline: string, body: string, category: string = 'GENERAL') => db.prepare("INSERT INTO news (headline, body, category, createdAt) VALUES (?, ?, ?, datetime('now'))").run(headline, body, category),
   generateDailyNews: () => {
-    // 1. War News (Recent Player Kills)
     const kills = db.prepare("SELECT count(*) as count FROM events WHERE type = 'PLAYER_KILLED' AND createdAt > datetime('now', '-24 hours')").get().count
-    if (kills > 0) {
-      dbOps.addNewsItem('WAR REPORT: Sector Conflict Rising', `Starfleet confirms ${kills} ship destructions in the last cycle. Tactical alerts issued.`, 'WAR')
-    }
-
-    // 2. Economy News (Stock shifts)
+    if (kills > 0) dbOps.addNewsItem('WAR REPORT: Sector Conflict Rising', `Starfleet confirms ${kills} ship destructions in the last cycle. Tactical alerts issued.`, 'WAR')
     const stocks = db.prepare('SELECT symbol, price, prevPrice FROM stocks').all() as any[]
-    if (stocks.length > 0) {
-      const biggest = stocks.reduce((prev, curr) => Math.abs(curr.price - curr.prevPrice) > Math.abs(prev.price - prev.prevPrice) ? curr : prev)
-      const dir = biggest.price > biggest.prevPrice ? 'surged' : 'plummeted'
-      dbOps.addNewsItem(`ECONOMY: ${biggest.symbol} Market Volatility`, `Shares in ${biggest.symbol} have ${dir} significantly. Traders are advised to re-evaluate portfolios.`, 'ECONOMY')
-    }
-
-    // 3. Social
+    if (stocks.length > 0) { const biggest = stocks.reduce((prev, curr) => Math.abs(curr.price - curr.prevPrice) > Math.abs(prev.price - prev.prevPrice) ? curr : prev); const dir = biggest.price > biggest.prevPrice ? 'surged' : 'plummeted'; dbOps.addNewsItem(`ECONOMY: ${biggest.symbol} Market Volatility`, `Shares in ${biggest.symbol} have ${dir} significantly. Traders are advised to re-evaluate portfolios.`, 'ECONOMY') }
     const comps = db.prepare("SELECT count(*) as count FROM companies WHERE createdAt > datetime('now', '-24 hours')").get().count
-    if (comps > 0) {
-      dbOps.addNewsItem('GALACTIC GROWTH: New Enterprises', `The Registrar reports ${comps} new company charters issued in the last cycle.`, 'SOCIAL')
-    }
-  }
+    if (comps > 0) dbOps.addNewsItem('GALACTIC GROWTH: New Enterprises', `The Registrar reports ${comps} new company charters issued in the last cycle.`, 'SOCIAL')
+  },
+  getEconomyStats: () => {
+    const totalCredits = db.prepare('SELECT SUM(credits) as total FROM players').get().total || 0
+    const totalCargo = db.prepare('SELECT SUM(quantity) as total FROM player_cargo').get().total || 0
+    const totalPlanetCredits = db.prepare('SELECT SUM(credits) as total FROM planets').get().total || 0
+    return { totalCredits, totalCargo, totalPlanetCredits }
+  },
+  updateBasePrice: (commodity: string, price: number) => db.prepare('INSERT OR REPLACE INTO world_settings (key, value) VALUES (?, ?)').run(`base_price_${commodity}`, price.toString()),
+  triggerManualEvent: (type: string, message: string) => dbOps.insertGlobalEvent(type, `[ADMIN ALERT] ${message}`)
 }

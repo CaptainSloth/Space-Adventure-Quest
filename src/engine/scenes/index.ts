@@ -390,6 +390,43 @@ Port Type: ${s.portType || 'None'}
       ]
     }
   },
+  admin_economy: (state) => {
+    const stats = dbOps.getEconomyStats()
+    return {
+      title: '`%1ADMIN: ECONOMY DASHBOARD` %7',
+      description: `
+GALAXY-WIDE STATISTICS:
+Total Pilot Credits: \`%e${stats.totalCredits}\` %7
+Total Cargo Units: \`%f${stats.totalCargo}\` %7
+Total Planet Credits: \`%e${stats.totalPlanetCredits}\` %7
+`,
+      options: [
+        { label: 'Adjust Base Prices', key: 'P', action: async (s) => ({ ...s, lastMessage: 'Base price editing coming soon.' }) },
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  admin_events: (state) => {
+    return {
+      title: '`%1ADMIN: EVENT TRIGGERS` %7',
+      description: 'Select an event to manually trigger for all online pilots.',
+      options: [
+        { label: 'Spawn Solar Flare', key: '1', action: async (s) => {
+          dbOps.triggerManualEvent('SOLAR_FLARE', 'A massive solar flare is disrupting warp signatures!')
+          return { ...s, lastMessage: 'Event triggered.' }
+        }},
+        { label: 'Spawn Merchant Convoy', key: '2', action: async (s) => {
+          dbOps.triggerManualEvent('CONVOY', 'A high-value merchant convoy has entered neutral space!')
+          return { ...s, lastMessage: 'Event triggered.' }
+        }},
+        { label: 'Reset Global Prices', key: '3', action: async (s) => {
+          dbOps.processEconomyRecovery()
+          return { ...s, lastMessage: 'Market stocks reset toward baseline.' }
+        }},
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
   admin_ships: (state) => {
     const builder = state.adminBuilder || { step: 'menu' }
     const templates = dbOps.getShipTemplates() as any[]
