@@ -204,6 +204,25 @@ CREATE TABLE IF NOT EXISTS company_alliances (
   PRIMARY KEY (companyA, companyB)
 );
 
+-- Stocks
+CREATE TABLE IF NOT EXISTS stocks (
+  symbol TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  price REAL NOT NULL,
+  prevPrice REAL NOT NULL,
+  volatility REAL DEFAULT 0.05,
+  description TEXT
+);
+
+-- Player Portfolio
+CREATE TABLE IF NOT EXISTS player_stocks (
+  playerId TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  quantity INTEGER DEFAULT 0,
+  avgPrice REAL DEFAULT 0,
+  PRIMARY KEY (playerId, symbol)
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

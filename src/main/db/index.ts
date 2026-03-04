@@ -161,6 +161,43 @@ export function initDb(): void {
       );
     `)
   }
+
+  // Check for stocks table
+  const hasStocks = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stocks'").get()
+  if (!hasStocks) {
+    console.log('Migrating: Adding stock market tables...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS stocks (
+        symbol TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        prevPrice REAL NOT NULL,
+        volatility REAL DEFAULT 0.05,
+        description TEXT
+      );
+      CREATE TABLE IF NOT EXISTS player_stocks (
+        playerId TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        quantity INTEGER DEFAULT 0,
+        avgPrice REAL DEFAULT 0,
+        PRIMARY KEY (playerId, symbol)
+      );
+    `)
+  }
+
+  // Initialize Stocks
+  const stockCount = db.prepare('SELECT count(*) as count FROM stocks').get().count
+  if (stockCount === 0) {
+    console.log('Initializing stock market data...')
+    const initialStocks = [
+      { symbol: 'ORE', name: 'Intergalactic Ore Corp', price: 100, volatility: 0.05, desc: 'Primary supplier of raw building materials.' },
+      { symbol: 'FUEL', name: 'Nova Energy Systems', price: 150, volatility: 0.08, desc: 'Monopolizing the transwarp fuel market.' },
+      { symbol: 'EQP', name: 'Atlas Equipment', price: 500, volatility: 0.12, desc: 'High-tech ship components and weaponry.' },
+      { symbol: 'PLAN', name: 'Terran Terraforming', price: 1200, volatility: 0.04, desc: 'Real estate and planetary development.' }
+    ]
+    const stmt = db.prepare('INSERT INTO stocks (symbol, name, price, prevPrice, volatility, description) VALUES (?, ?, ?, ?, ?, ?)')
+    initialStocks.forEach(s => stmt.run(s.symbol, s.name, s.price, s.price, s.volatility, s.desc))
+  }
 }
 
 export function getDb(): Database.Database {
@@ -441,5 +478,43 @@ export const dbOps = {
   },
   getAvailableCompanies: () => {
     return db.prepare('SELECT * FROM companies').all()
+  },
+  getStocks: () => {
+    return db.prepare('SELECT * FROM stocks').all()
+  },
+  updateStockPrices: () => {
+    const stocks = db.prepare('SELECT * FROM stocks').all() as any[]
+    const stmt = db.prepare('UPDATE stocks SET price = ?, prevPrice = ? WHERE symbol = ?')
+    stocks.forEach(s => {
+      const change = 1 + (Math.random() * s.volatility * 2 - s.volatility)
+      const newPrice = Math.max(10, s.price * change)
+      stmt.run(newPrice, s.price, s.symbol)
+    })
+  },
+  getPlayerStocks: (playerId: string) => {
+    return db.prepare(`
+      SELECT ps.*, s.name, s.price as currentPrice 
+      FROM player_stocks ps 
+      JOIN stocks s ON ps.symbol = s.symbol 
+      WHERE ps.playerId = ?
+    `).all(playerId)
+  },
+  tradeStock: (playerId: string, symbol: string, quantity: number, price: number) => {
+    const isBuy = quantity > 0
+    return db.transaction(() => {
+      if (isBuy) {
+        db.prepare(`
+          INSERT INTO player_stocks (playerId, symbol, quantity, avgPrice)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(playerId, symbol) DO UPDATE SET
+            avgPrice = (avgPrice * quantity + ? * ?) / (quantity + ?),
+            quantity = quantity + ?
+        `).run(playerId, symbol, quantity, price, price, quantity, quantity, quantity)
+      } else {
+        const current = db.prepare('SELECT quantity FROM player_stocks WHERE playerId = ? AND symbol = ?').get(playerId, symbol) as any
+        if (!current || current.quantity < Math.abs(quantity)) throw new Error('Not enough shares')
+        db.prepare('UPDATE player_stocks SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
+      }
+    })()
   }
 }

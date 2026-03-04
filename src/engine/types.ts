@@ -196,6 +196,8 @@ export interface GameState {
   companyChatMessages: ChatMessage[]
   companyAlliances: any[]
   playerCargo: CargoItem[]
+  stocks: any[]
+  playerPortfolio: any[]
 }
 
 export interface SerializableSceneOption {
@@ -233,6 +235,8 @@ export interface SerializableSceneViewModel {
   companyAlliances?: any[]
   playerCargo?: CargoItem[]
   hudStats?: HudStats | null
+  stocks?: any[]
+  playerPortfolio?: any[]
 }
 
 export interface SceneOption extends SerializableSceneOption {

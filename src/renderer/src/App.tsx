@@ -24,6 +24,8 @@ interface SceneViewModel {
   companyAlliances?: any[]
   playerCargo?: any[]
   hudStats?: any | null
+  stocks?: any[]
+  playerPortfolio?: any[]
 }
 
 interface Notification {
@@ -114,19 +116,14 @@ const App: React.FC = () => {
       // @ts-ignore
       newVm = await window.api.invoke('claim-planet', selectedPlanetId)
     } else if (vm?.title.includes('PORT') && /^[o|f|e|r|u|q]$/.test(key.toLowerCase())) {
-       // Reliable Metadata Parsing: [DATA:name:buy:sell]
-       // Fixed regex to support negative numbers and N/A
        const metadataRegex = /\[DATA:(\w+):(-?\d+|N\/A):(-?\d+|N\/A)\]/g
        const buyMap: Record<string, string> = { 'o': 'ore', 'f': 'fuel', 'e': 'equipment' }
        const sellMap: Record<string, string> = { 'r': 'ore', 'u': 'fuel', 'q': 'equipment' }
-       
        const char = key.toLowerCase()
        const isBuy = !!buyMap[char]
        const commodityName = isBuy ? buyMap[char] : sellMap[char]
-       
        let price = 0
        let match
-       // We need to reset the regex lastIndex because of the 'g' flag
        metadataRegex.lastIndex = 0
        while ((match = metadataRegex.exec(vm.description)) !== null) {
          if (match[1] === commodityName) {
@@ -134,22 +131,28 @@ const App: React.FC = () => {
            break
          }
        }
-
        if (price > 0) {
-         try {
-           // @ts-ignore
-           newVm = await window.api.invoke('trade-commodity', commodityName, isBuy ? 1 : -1, price)
-         } catch (e) {
-           console.error('Trade error:', e)
-           // @ts-ignore
-           newVm = await window.api.invoke('get-scene')
-         }
+         // @ts-ignore
+         newVm = await window.api.invoke('trade-commodity', commodityName, isBuy ? 1 : -1, price)
        } else {
          // @ts-ignore
          newVm = await window.api.invoke('execute-action', key)
        }
+    } else if (vm?.title.includes('EXCHANGE:') && (key === '1' || key === 'S')) {
+       // Stock Trading Logic
+       const symbol = selectedPlanetId // Symbol is stored here
+       const stock = vm.stocks?.find(s => s.symbol === symbol)
+       const portfolio = vm.playerPortfolio?.find(p => p.symbol === symbol)
+       if (stock) {
+         if (key === '1') {
+           // @ts-ignore
+           newVm = await window.api.invoke('trade-stock', symbol, 10, stock.price)
+         } else {
+           // @ts-ignore
+           newVm = await window.api.invoke('trade-stock', symbol, -(portfolio?.quantity || 0), stock.price)
+         }
+       }
     } else if (vm?.title.includes('VEX') && key.toLowerCase() === 't') {
-       // Vex Trading (Greedy constant for now)
        // @ts-ignore
        newVm = await window.api.invoke('trade-commodity', 'ore', -1, 30) 
     } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
@@ -169,11 +172,13 @@ const App: React.FC = () => {
       newVm = await window.api.invoke('execute-action', key)
     }
     
-    setVm(newVm)
-    if (newVm.title.includes('BRIDGE')) {
-      setSelectedPlanetId(null)
-    } else if (newVm.selectedPlanetId !== undefined) {
-      setSelectedPlanetId(newVm.selectedPlanetId)
+    if (newVm) {
+      setVm(newVm)
+      if (newVm.title.includes('BRIDGE')) {
+        setSelectedPlanetId(null)
+      } else if (newVm.selectedPlanetId !== undefined) {
+        setSelectedPlanetId(newVm.selectedPlanetId)
+      }
     }
     setLoading(false)
   }

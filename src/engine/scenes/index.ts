@@ -43,7 +43,9 @@ export const toSerializable = (
   companyChatMessages?: any[],
   companyAlliances?: any[],
   playerCargo?: any[],
-  hudStats?: any | null
+  hudStats?: any | null,
+  stocks?: any[],
+  playerPortfolio?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -64,6 +66,8 @@ export const toSerializable = (
     companyAlliances,
     playerCargo,
     hudStats,
+    stocks,
+    playerPortfolio,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -129,6 +133,7 @@ const registry: SceneRegistry = {
       { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
       { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
       { label: 'Rankings', key: 'K', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
+      { label: 'Stock Market', key: 'G', action: async (s) => ({ ...s, currentScene: 'stock_market' }) },
       { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },
       { label: 'Faction HQ', key: 'H', action: async (s) => ({ ...s, currentScene: 'faction_hq' }) },
       { label: 'Comm Link (Chat)', key: 'M', action: async (s) => ({ ...s, currentScene: 'messages' }) },
@@ -376,6 +381,65 @@ ${npcs.map((n, i) => `${i + 1}. \`%f${n.name}\` %7 - Pers: ${n.personality}`).jo
           }
         })),
         { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  stock_market: (state) => {
+    return {
+      title: '`%eGALACTIC STOCK EXCHANGE` %7',
+      description: `Welcome to the exchange. Speculate on the growth of the galaxy.
+      
+CURRENT MARKET LISTINGS:
+${state.stocks?.map((s, i) => `${i + 1}. \`%b${s.symbol.padEnd(5)}\` %7 - ${s.name.padEnd(25)} : \`%e${s.price.toFixed(2)}\` %7 (${s.price >= s.prevPrice ? '%a▲' : '%1▼'}%7)`).join('\n')}
+
+YOUR PORTFOLIO:
+${state.playerPortfolio?.length ? state.playerPortfolio.map(p => `- \`%b${p.symbol}\` %7: ${p.quantity} shares (Avg: ${p.avgPrice.toFixed(2)})`).join('\n') : 'No active investments.'}`,
+      options: [
+        ...state.stocks?.map((s, i) => ({
+          label: `Trade ${s.symbol}`,
+          key: (i + 1).toString(),
+          action: async (st: GameState) => ({ ...st, currentScene: 'stock_details', lastMessage: `Loading data for ${s.symbol}...`, selectedPlanetId: s.symbol }) // Reuse selectedPlanetId for stock symbol
+        })) || [],
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
+  stock_details: (state) => {
+    const symbol = state.selectedPlanetId // Symbol stored here
+    const stock = state.stocks.find(s => s.symbol === symbol)
+    const portfolio = state.playerPortfolio.find(p => p.symbol === symbol)
+    
+    if (!stock) return { title: 'ERROR', description: 'Stock not found', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...st, currentScene: 'stock_market' }) }] } as any
+
+    return {
+      title: `\`%eEXCHANGE: ${stock.name}\` %7`,
+      description: `
+Symbol: \`%b${stock.symbol}\` %7
+Current Price: \`%e${stock.price.toFixed(2)}\` %7
+Previous: ${stock.prevPrice.toFixed(2)}
+Volatility: ${(stock.volatility * 100).toFixed(0)}%
+
+${stock.description}
+
+YOUR POSITION:
+Shares: \`%f${portfolio?.quantity || 0}\` %7
+Avg Price: ${portfolio?.avgPrice.toFixed(2) || '0.00'}
+Value: \`%e${((portfolio?.quantity || 0) * stock.price).toFixed(2)}\` %7
+`,
+      options: [
+        { label: 'Buy 10 Shares', key: '1', action: async (s) => {
+          if (s.player!.credits >= stock.price * 10) {
+            return { ...s, lastMessage: `Requesting purchase of 10 ${symbol}...` }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: 'Sell All Shares', key: 'S', action: async (s) => {
+          if (portfolio && portfolio.quantity > 0) {
+            return { ...s, lastMessage: `Requesting sale of ${portfolio.quantity} ${symbol}...` }
+          }
+          return { ...s, lastMessage: 'No shares to sell!' }
+        }},
+        { label: 'Back to Exchange', key: 'B', action: async (s) => ({ ...s, currentScene: 'stock_market' }) }
       ]
     }
   },
