@@ -202,6 +202,63 @@ export function initDb(): void {
     db.exec('CREATE TABLE stock_history (symbol TEXT NOT NULL, price REAL NOT NULL, recordedAt TEXT NOT NULL)')
   }
 
+  // Card System Migrations
+  const hasCards = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='star_cards'").get()
+  if (!hasCards) {
+    console.log('Migrating: Adding CCG card tables...')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS star_cards (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        rarity TEXT DEFAULT 'common',
+        power INTEGER DEFAULT 0,
+        effect TEXT,
+        description TEXT
+      );
+      CREATE TABLE IF NOT EXISTS player_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        playerId TEXT NOT NULL,
+        cardId TEXT NOT NULL,
+        level INTEGER DEFAULT 1,
+        equipped BOOLEAN DEFAULT FALSE,
+        acquiredAt TEXT NOT NULL
+      );
+    `)
+  }
+
+  // Seed Cards if empty
+  const cardCount = db.prepare('SELECT count(*) as count FROM star_cards').get().count
+  if (cardCount === 0) {
+    console.log('Seeding initial Star Cards...')
+    const initialCards = [
+      // SHIP CARDS
+      { id: 'c_wasp', name: 'Wasp Drone', type: 'ship', rarity: 'common', power: 2, effect: 'rally', desc: 'Cheap and disposable.' },
+      { id: 'c_hauler', name: 'Hauler Convoy', type: 'ship', rarity: 'common', power: 4, effect: 'medic', desc: 'Heals adjacent cards.' },
+      { id: 'c_falcon', name: 'Falcon Interceptor', type: 'ship', rarity: 'uncommon', power: 6, effect: 'warp', desc: 'Moves between rows.' },
+      { id: 'c_titan', name: 'Imperial Titan', type: 'ship', rarity: 'rare', power: 10, effect: 'horn', desc: 'Doubles row power.' },
+      { id: 'c_planet_killer', name: 'Planet Killer', type: 'ship', rarity: 'legendary', power: 15, effect: 'scorch', desc: 'Destroys strongest enemy.' },
+      
+      // CREW CARDS
+      { id: 'c_ace_pilot', name: 'Ace Pilot', type: 'crew', rarity: 'common', power: 1, effect: 'shield', desc: 'Protects row from effects.' },
+      { id: 'c_engineer', name: 'Master Engineer', type: 'crew', rarity: 'uncommon', power: 2, effect: 'medic', desc: 'Revives ship from discard.' },
+      { id: 'c_hacker', name: 'Shadow Hacker', type: 'crew', rarity: 'rare', power: 3, effect: 'hack', desc: 'Steals an enemy card.' },
+      
+      // EVENT CARDS
+      { id: 'c_emp', name: 'EMP Blast', type: 'event', rarity: 'common', power: 0, effect: 'fog', desc: 'Zeros enemy row power.' },
+      { id: 'c_warp_jump', name: 'Warp Jump', type: 'event', rarity: 'uncommon', power: 0, effect: 'spy', desc: 'Draw 2 cards.' },
+      { id: 'c_overload', name: 'System Overload', type: 'event', rarity: 'rare', power: 0, effect: 'overload', desc: 'Sacrifice card for damage.' },
+      
+      // PLANET CARDS
+      { id: 'c_terran', name: 'Terran Colony', type: 'planet', rarity: 'common', power: 5, effect: 'commander', desc: 'Buffs all same faction.' },
+      { id: 'c_station', name: 'Deep Space 9', type: 'planet', rarity: 'rare', power: 8, effect: 'horn', desc: 'Station support.' }
+    ]
+    const insertCard = db.prepare('INSERT INTO star_cards (id, name, type, rarity, power, effect, description) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    db.transaction(() => {
+      initialCards.forEach(c => insertCard.run(c.id, c.name, c.type, c.rarity, c.power, c.effect, c.desc))
+    })()
+  }
+
   // Ship System Migrations
   const hasTemplates = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ship_templates'").get()
   if (!hasTemplates) {
@@ -664,5 +721,48 @@ export const dbOps = {
   },
   deleteShipModifier: (id: number) => {
     return db.prepare('DELETE FROM ship_modifiers WHERE id = ?').run(id)
+  },
+  getAllStarCards: () => {
+    return db.prepare('SELECT * FROM star_cards').all()
+  },
+  getPlayerCards: (playerId: string) => {
+    return db.prepare(`
+      SELECT pc.id as instanceId, pc.level, pc.equipped, pc.acquiredAt, sc.*
+      FROM player_cards pc
+      JOIN star_cards sc ON pc.cardId = sc.id
+      WHERE pc.playerId = ?
+    `).all(playerId)
+  },
+  addPlayerCard: (playerId: string, cardId: string) => {
+    return db.prepare(`
+      INSERT INTO player_cards (playerId, cardId, acquiredAt)
+      VALUES (?, ?, datetime('now'))
+    `).run(playerId, cardId)
+  },
+  equipPlayerCard: (instanceId: number, equipped: boolean) => {
+    return db.prepare('UPDATE player_cards SET equipped = ? WHERE id = ?').run(equipped ? 1 : 0, instanceId)
+  },
+  buyCardPack: (playerId: string, rarityWeights: Record<string, number>) => {
+    const allCards = db.prepare('SELECT id, rarity FROM star_cards').all() as any[]
+    
+    // Draw 3 cards
+    const drawn: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const roll = Math.random()
+      let rarity = 'common'
+      if (roll < 0.01) rarity = 'legendary'
+      else if (roll < 0.05) rarity = 'epic'
+      else if (roll < 0.15) rarity = 'rare'
+      else if (roll < 0.40) rarity = 'uncommon'
+      
+      const pool = allCards.filter(c => c.rarity === rarity)
+      const choice = pool.length > 0 
+        ? pool[Math.floor(Math.random() * pool.length)] 
+        : allCards[Math.floor(Math.random() * allCards.length)]
+      
+      drawn.push(choice.id)
+      dbOps.addPlayerCard(playerId, choice.id)
+    }
+    return drawn
   }
 }

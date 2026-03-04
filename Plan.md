@@ -1223,12 +1223,30 @@ content/base/
 - [x] Galactic Stock Market (Resource speculation)
 - [x] Player-run Ports (Trading stations on owned planets)
 - [x] Real-time price history charts (ASCII)
-- [ ] Full ship template library (50–100 base templates)
-- [ ] Ship modifier library (30+ modifiers)
-- [ ] Ship modifier/generation system (prefix + base + suffix)
-- [ ] Legendary ships (unique, one-per-galaxy)
-- [ ] Ship capture mechanic (board and steal opponent's ship)
-- [ ] Admin ship editor
+- [x] Full ship template library (50–100 base templates)
+- [x] Ship modifier library (30+ modifiers)
+- [x] Ship modifier/generation system (prefix + base + suffix)
+- [x] Legendary ships (unique, one-per-galaxy)
+- [x] Ship capture mechanic (board and steal opponent's ship)
+- [x] Admin ship editor
+
+### Phase 7 — CCG: Star Cards
+> Full card game system
+
+- [ ] Duel engine (extended from LoAF's Gwent system)
+- [x] Star Card Database (Definitions & Rarity)
+- [x] Pack Opening System (Buy "Star Packs" at ports)
+- [x] Card Collection Scene (View and manage your deck)
+- [x] Deck Building (Equip up to 5 active cards)
+- [ ] Card definitions (40+ cards, 3 rows)
+- [ ] New effects (shield, hack, warp, overload, commander)
+- [ ] Card acquisition (drops, merchants, prizes)
+- [ ] Deck management (collection view, deck builder)
+- [ ] Card Trading (P2P card exchange via Comm Link)
+- [ ] Card Leveling (Combine duplicates to upgrade)
+- [ ] Cantina scenes (duel venues with varying stakes)
+- [ ] NPC card duel opponents with AI tiers
+- [ ] Admin card editor
 
 ### Phase 7 — CCG: Star Cards
 > Full card game system

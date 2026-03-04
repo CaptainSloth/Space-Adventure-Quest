@@ -92,6 +92,23 @@ export interface CargoItem {
   quantity: number
 }
 
+export interface StarCard {
+  id: string
+  name: string
+  type: 'ship' | 'crew' | 'event' | 'planet'
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+  power: number
+  effect?: string
+  description: string
+}
+
+export interface PlayerCard extends StarCard {
+  instanceId: number
+  level: number
+  equipped: boolean
+  acquiredAt: string
+}
+
 export interface CombatSide {
   id: string
   name: string
@@ -200,6 +217,8 @@ export interface GameState {
   playerPortfolio: any[]
   shipyardStock: any[]
   pendingShipPurchase?: any | null
+  playerDeck: PlayerCard[]
+  allStarCards: StarCard[]
   adminBuilder?: {
     templateId?: string
     prefixId?: number
@@ -246,6 +265,8 @@ export interface SerializableSceneViewModel {
   stocks?: any[]
   playerPortfolio?: any[]
   shipyardStock?: any[]
+  playerDeck?: PlayerCard[]
+  allStarCards?: StarCard[]
 }
 
 export interface SceneOption extends SerializableSceneOption {
