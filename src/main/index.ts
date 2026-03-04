@@ -27,7 +27,9 @@ let currentState: GameState = {
   playerCargo: [],
   stocks: [],
   playerPortfolio: [],
-  shipyardStock: getRandomShipyardStock(5)
+  shipyardStock: getRandomShipyardStock(5),
+  playerDeck: [],
+  allStarCards: []
 }
 
 function createWindow(): void {
@@ -78,6 +80,8 @@ const syncAllData = () => {
     currentState.stocks = dbOps.getStocks() as any
     currentState.playerPortfolio = dbOps.getPlayerStocks(currentState.player.id) as any
     currentState.currentPlanets = dbOps.getPlanetsBySector(currentState.player.sectorId) as any
+    currentState.playerDeck = dbOps.getPlayerCards(currentState.player.id) as any
+    currentState.allStarCards = dbOps.getAllStarCards() as any
     
     if (currentState.player.companyId) {
       currentState.currentCompany = dbOps.getCompany(currentState.player.companyId) as any
@@ -91,11 +95,6 @@ const syncAllData = () => {
       currentState.companyAlliances = []
     }
   }
-  
-  if (currentState.currentScene === 'stock_details' && currentState.selectedPlanetId) {
-    (currentState as any).stockHistory = dbOps.getStockHistory(currentState.selectedPlanetId).map((h: any) => h.price)
-  }
-
   if (currentState.currentScene === 'company') {
     currentState.availableCompanies = dbOps.getAvailableCompanies() as any
   }
@@ -131,7 +130,10 @@ const returnSerializedScene = () => {
     getHudStats(), 
     currentState.stocks, 
     currentState.playerPortfolio,
-    currentState.shipyardStock
+    currentState.shipyardStock,
+    (currentState as any).stockHistory,
+    currentState.playerDeck,
+    currentState.allStarCards
   )
 }
 
@@ -144,11 +146,7 @@ app.whenReady().then(() => {
   })
 
   // Galactic Ticks (Every 10 minutes)
-  // - Planet growth
-  // - Tax collection
-  // - Resource generation
   setInterval(() => {
-    console.log('GALACTIC TICK: Processing planet growth and economy...')
     dbOps.growAllPlanets()
     dbOps.insertGlobalEvent('ECONOMY_TICK', 'A new galactic day has begun. Planetary populations have grown and taxes have been collected.')
   }, 600000)
@@ -181,9 +179,37 @@ app.whenReady().then(() => {
           newState.lastMessage = null
         }
 
+        // Handle CCG Equip Request
+        if (newState.lastMessage?.includes('Requesting unequip for instance') || newState.lastMessage?.includes('Requesting equip for instance')) {
+          const instanceId = parseInt(newState.lastMessage.split('instance ')[1])
+          const isEquip = newState.lastMessage.includes('Requesting equip')
+          dbOps.equipPlayerCard(instanceId, isEquip)
+          newState.lastMessage = isEquip ? 'Card equipped.' : 'Card unequipped.'
+        }
+
+        // Handle CCG Leveling Request
+        if (newState.lastMessage?.includes('Requesting card combination for')) {
+          const cardId = newState.lastMessage.split('for ')[1]
+          try {
+            dbOps.combineCards(newState.player!.id, cardId)
+            newState.lastMessage = 'Cards combined! One card has leveled up.'
+          } catch (e: any) {
+            newState.lastMessage = `Combination failed: ${e.message}`
+          }
+        }
+
+        // Handle CCG Pack Purchase
+        if (newState.lastMessage === 'Requesting Star Pack purchase...') {
+          if (newState.player!.credits >= 500) {
+            newState.player!.credits -= 500
+            const drawn = dbOps.buyCardPack(newState.player!.id, {})
+            newState.lastMessage = `Purchase complete! You found: ${drawn.join(', ')}`
+            db.prepare('UPDATE players SET credits = ? WHERE id = ?').run(newState.player!.credits, newState.player!.id)
+          }
+        }
+
         // Handle Ship Purchase Persistence
         if (newState.pendingShipPurchase) {
-          console.log('Persisting ship purchase:', newState.pendingShipPurchase.instanceName)
           dbOps.createPlayerShip(newState.player!.id, newState.pendingShipPurchase)
           newState.pendingShipPurchase = null
         }
@@ -201,7 +227,6 @@ app.whenReady().then(() => {
 
         // Handle Manual Galactic Tick
         if (newState.lastMessage?.includes('Requesting manual galactic economic tick...')) {
-          console.log('MANUAL TICK: Admin triggered growth and market shift.')
           dbOps.growAllPlanets()
           dbOps.updateStockPrices()
           newState.lastMessage = 'Tick Processed: Planets grown, taxes collected, and markets shifted.'
@@ -543,16 +568,6 @@ app.whenReady().then(() => {
     currentState.player.credits -= amount
     getDb().prepare('UPDATE players SET credits = ? WHERE id = ?').run(currentState.player.credits, currentState.player.id)
     currentState.lastMessage = `Deposited ${amount} credits to company treasury.`
-    return returnSerializedScene()
-  })
-
-  ipcMain.handle('set-planet-prices', async (event, planetId: string, prices: any) => {
-    if (!currentState.player) return
-    const planet = dbOps.getPlanetsBySector(currentState.player.sectorId).find(p => p.id === planetId)
-    if (planet && planet.ownerId === currentState.player.id) {
-      dbOps.updatePlanetPort(planetId, true, JSON.stringify(prices))
-      currentState.lastMessage = 'Port prices updated.'
-    }
     return returnSerializedScene()
   })
 

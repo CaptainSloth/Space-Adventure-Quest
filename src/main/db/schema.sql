@@ -257,6 +257,29 @@ CREATE TABLE IF NOT EXISTS ship_modifiers (
   description TEXT
 );
 
+-- CCG Star Cards
+CREATE TABLE IF NOT EXISTS star_cards (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,               -- 'ship', 'crew', 'event', 'planet'
+  rarity TEXT DEFAULT 'common',     -- 'common', 'uncommon', 'rare', 'epic', 'legendary'
+  power INTEGER DEFAULT 0,
+  effect TEXT,                      -- 'spy', 'scorch', 'horn', 'shield', etc.
+  description TEXT
+);
+
+-- Player Card Collection
+CREATE TABLE IF NOT EXISTS player_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  playerId TEXT NOT NULL,
+  cardId TEXT NOT NULL,
+  level INTEGER DEFAULT 1,
+  equipped BOOLEAN DEFAULT FALSE,
+  acquiredAt TEXT NOT NULL,
+  FOREIGN KEY (playerId) REFERENCES players(id),
+  FOREIGN KEY (cardId) REFERENCES star_cards(id)
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

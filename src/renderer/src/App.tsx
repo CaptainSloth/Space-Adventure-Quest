@@ -27,6 +27,9 @@ interface SceneViewModel {
   stocks?: any[]
   playerPortfolio?: any[]
   shipyardStock?: any[]
+  playerDeck?: any[]
+  allStarCards?: any[]
+  stockHistory?: number[]
 }
 
 interface Notification {
@@ -38,7 +41,7 @@ const renderAsciiChart = (data: number[]) => {
   if (!data || data.length < 2) return ''
   const max = Math.max(...data)
   const min = Math.min(...data)
-  const range = max - min || 1
+  const range = (max - min) || 1
   const height = 5
   const width = data.length
   
@@ -178,8 +181,6 @@ const App: React.FC = () => {
        // @ts-ignore
        newVm = await window.api.invoke('trade-commodity', 'ore', -1, 30) 
     } else if (vm?.title.includes('ENGINEERING') && key === 'R') {
-       // Open Rename Form (handled via state in registration form logic)
-       // Just set title check for UI
        setVm({ ...vm, title: 'SHIP RENAMING' })
     } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
       const company = vm.availableCompanies?.[parseInt(key) - 1]
