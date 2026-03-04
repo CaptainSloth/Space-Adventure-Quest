@@ -247,17 +247,73 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
     options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
   }),
   admin: (state) => ({
-    title: '`%1ADMIN` %7',
-    description: 'System override.',
+    title: '`%1SYSTEM ADMINISTRATION` %7',
+    description: '`%7Deep access protocols active. Select a subsystem to manage.',
     options: [
-      { label: 'Credits +5k', key: 'C', action: async (s) => ({ ...s, player: { ...s.player!, credits: s.player!.credits + 5000 }, lastMessage: 'Granted.' }) },
-      { label: 'Galactic Tick', key: 'K', action: async (s) => ({ ...s, lastMessage: 'Requesting manual galactic economic tick...' }) },
-      { label: 'Refill Turns', key: 'T', action: async (s) => ({ ...s, player: { ...s.player!, turns: s.player!.maxTurns }, lastMessage: 'Refilled.' }) },
-      { label: 'Ship Editor', key: 'Y', action: async (s) => ({ ...s, currentScene: 'admin_ships', adminBuilder: { step: 'menu' } }) },
-      { label: 'Card Editor', key: 'G', action: async (s) => ({ ...s, currentScene: 'admin_cards' }) },
-      { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      { label: 'Player Management', key: 'P', action: async (s) => ({ ...s, currentScene: 'admin_players' }) },
+      { label: 'World Configuration', key: 'W', action: async (s) => ({ ...s, currentScene: 'admin_world' }) },
+      { label: 'Ship Library', key: 'S', action: async (s) => ({ ...s, currentScene: 'admin_ships', adminBuilder: { step: 'menu' } }) },
+      { label: 'NPC Database', key: 'N', action: async (s) => ({ ...s, currentScene: 'admin_npcs' }) },
+      { label: 'Planet Registry', key: 'L', action: async (s) => ({ ...s, currentScene: 'admin_planets' }) },
+      { label: 'Galaxy Editor', key: 'G', action: async (s) => ({ ...s, currentScene: 'admin_galaxy' }) },
+      { label: 'Economy Dashboard', key: 'E', action: async (s) => ({ ...s, currentScene: 'admin_economy' }) },
+      { label: 'Star Card Editor', key: 'C', action: async (s) => ({ ...s, currentScene: 'admin_cards' }) },
+      { label: 'Event Triggers', key: 'V', action: async (s) => ({ ...s, currentScene: 'admin_events' }) },
+      { label: 'Company Control', key: 'O', action: async (s) => ({ ...s, currentScene: 'admin_companies' }) },
+      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
+  admin_players: (state) => {
+    const players = dbOps.getAllPlayers()
+    return {
+      title: '`%1ADMIN: PLAYER MANAGEMENT` %7',
+      description: `Registered Pilots: \`%f${players.length}\` %7`,
+      options: [
+        ...players.slice(0, 10).map((p, i) => ({
+          label: `Edit ${p.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => ({ ...s, currentScene: 'admin_player_edit', selectedPlanetId: p.id }) // Reuse field for playerId
+        })),
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
+      ]
+    }
+  },
+  admin_player_edit: (state) => {
+    const playerId = state.selectedPlanetId
+    const p = dbOps.getPlayer(playerId!) as any
+    if (!p) return { title: 'ERROR', description: 'Player not found', options: [{ label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_players' }) }] }
+
+    return {
+      title: `\`%1ADMIN: EDITING ${p.name.toUpperCase()}\` %7`,
+      description: `
+Credits: \`%e${p.credits}\` %7
+Alignment: ${p.alignment}
+Faction: ${p.faction.toUpperCase()}
+Sector: ${p.sectorId}
+Turns: ${p.turns} / ${p.maxTurns}
+Status: ${p.isBanned ? '%1BANNED%7' : '%aACTIVE%7'}
+`,
+      options: [
+        { label: 'Grant 10,000 Credits', key: 'C', action: async (s) => {
+          dbOps.updatePlayerCredits(p.id, 10000)
+          return { ...s, lastMessage: `Granted 10k to ${p.name}.` }
+        }},
+        { label: 'Shift Alignment (+100)', key: 'A', action: async (s) => {
+          dbOps.setPlayerAlignment(p.id, p.alignment + 100)
+          return { ...s, lastMessage: `Alignment shifted for ${p.name}.` }
+        }},
+        { label: 'Refill Daily Turns', key: 'T', action: async (s) => {
+          dbOps.refillPlayerTurns(p.id)
+          return { ...s, lastMessage: `Turns reset for ${p.name}.` }
+        }},
+        { label: p.isBanned ? 'UNBAN PLAYER' : 'BAN PLAYER', key: 'X', action: async (s) => {
+          dbOps.setPlayerBanned(p.id, !p.isBanned)
+          return { ...s, lastMessage: `Ban status toggled for ${p.name}.` }
+        }},
+        { label: 'Back to List', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin_players' }) }
+      ]
+    }
+  },
   admin_cards: (state) => {
     const cards = dbOps.getAllStarCards() as any[]
     return {

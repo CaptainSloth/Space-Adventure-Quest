@@ -125,13 +125,16 @@ export function initDb(): void {
     `)
   }
 
-  // Space Stations Migration
-  const hasStations = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='space_stations'").get()
-  if (!hasStations) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS space_stations (id INTEGER PRIMARY KEY AUTOINCREMENT, sectorId INTEGER NOT NULL, playerId TEXT NOT NULL, name TEXT NOT NULL, type TEXT DEFAULT 'outpost', level INTEGER DEFAULT 1, builtAt TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS resource_nodes (id INTEGER PRIMARY KEY AUTOINCREMENT, sectorId INTEGER NOT NULL, type TEXT NOT NULL, commodity TEXT NOT NULL, abundance REAL DEFAULT 1.0, isDepleted BOOLEAN DEFAULT FALSE);
-    `)
+  // Check for lastLoginAt column
+  const playerCols = db.prepare("PRAGMA table_info(players)").all() as any[]
+  if (!playerCols.some(col => col.name === 'lastLoginAt')) {
+    console.log('Migrating: Adding lastLoginAt to players...')
+    db.prepare("ALTER TABLE players ADD COLUMN lastLoginAt TEXT").run()
+  }
+
+  if (!playerCols.some(col => col.name === 'isBanned')) {
+    console.log('Migrating: Adding isBanned to players...')
+    db.prepare("ALTER TABLE players ADD COLUMN isBanned BOOLEAN DEFAULT FALSE").run()
   }
 }
 
@@ -182,6 +185,7 @@ export const dbOps = {
   resetAllNpcCooldowns: () => db.prepare("DELETE FROM world_settings WHERE key LIKE 'cooldown_npc_%'").run(),
   setPlayerAlignment: (playerId: string, alignment: number) => db.prepare('UPDATE players SET alignment = ? WHERE id = ?').run(alignment, playerId),
   refillPlayerTurns: (playerId: string) => db.prepare('UPDATE players SET turns = maxTurns WHERE id = ?').run(playerId),
+  setPlayerBanned: (playerId: string, isBanned: boolean) => db.prepare('UPDATE players SET isBanned = ? WHERE id = ?').run(isBanned ? 1 : 0, playerId),
   updatePlayerHeartbeat: (playerId: string) => db.prepare("UPDATE players SET lastSeen = datetime('now') WHERE id = ?").run(playerId),
   updatePlayerLastLogin: (playerId: string) => db.prepare("UPDATE players SET lastLoginAt = datetime('now') WHERE id = ?").run(playerId),
   getOnlinePlayersInSector: (sectorId: number, excludePlayerId: string) => db.prepare(`SELECT id, name, faction, alignment, shipId, level FROM players WHERE sectorId = ? AND id != ? AND lastSeen > datetime('now', '-120 seconds')`).all(sectorId, excludePlayerId),
