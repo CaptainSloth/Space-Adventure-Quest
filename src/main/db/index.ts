@@ -4,6 +4,7 @@ import { join } from 'path'
 import { readFileSync } from 'fs'
 import { generateGalaxy } from '../../engine/galaxy'
 import { SHIP_TEMPLATES, SHIP_PREFIXES, SHIP_SUFFIXES, LEGENDARY_SHIPS } from '../../engine/ships'
+import { getPortInventory } from '../../engine/trading'
 
 let db: Database.Database
 
@@ -20,26 +21,39 @@ export function initDb(): void {
   const planetCount = db.prepare('SELECT count(*) as count FROM planets').get().count
 
   if (sectorCount === 0) {
-    console.log('Generating initial galaxy...')
+    console.log('Generating initial galaxy with dynamic ports...')
     const { sectors, planets } = generateGalaxy(500)
-    const insertSector = db.prepare(`INSERT INTO sectors (id, name, type, warps, portType) VALUES (@id, @name, @type, @warps, @portType)`)
+    const insertSector = db.prepare(`
+      INSERT INTO sectors (id, name, type, warps, portType, portInventory) 
+      VALUES (@id, @name, @type, @warps, @portType, @portInventory)
+    `)
     const insertPlanet = db.prepare(`INSERT INTO planets (id, sectorId, name, type, population, maxPopulation, taxRate, createdAt) VALUES (@id, @sectorId, @name, @type, @population, @maxPopulation, @taxRate, @createdAt)`)
-    db.transaction(() => {
-      for (const s of sectors) insertSector.run({ ...s, warps: JSON.stringify(s.warps) })
-      for (const p of planets) insertPlanet.run(p)
-    })()
-  } else if (planetCount === 0) {
-    const sectors = db.prepare('SELECT id FROM sectors').all()
-    const insertPlanet = db.prepare(`INSERT INTO planets (id, sectorId, name, type, population, maxPopulation, taxRate, createdAt) VALUES (@id, @sectorId, @name, @type, @population, @maxPopulation, @taxRate, @createdAt)`)
-    const PLANET_TYPES = ['terran', 'volcanic', 'ice', 'gas_giant', 'desert', 'ocean', 'barren']
+    
     db.transaction(() => {
       for (const s of sectors) {
-        const numPlanets = Math.floor(Math.random() * 6)
-        for (let j = 0; j < numPlanets; j++) {
-          const type = PLANET_TYPES[Math.floor(Math.random() * PLANET_TYPES.length)]
-          insertPlanet.run({ id: Math.random().toString(36).substring(7), sectorId: s.id, name: `Planet ${s.id}-${j + 1}`, type, population: Math.floor(Math.random() * 1500) + 500, maxPopulation: type === 'terran' ? 100000 : 10000, taxRate: 0.1, createdAt: new Date().toISOString() })
-        }
+        const inventory = s.portType ? getPortInventory(s.portType) : null
+        insertSector.run({ 
+          ...s, 
+          warps: JSON.stringify(s.warps),
+          portInventory: inventory ? JSON.stringify(inventory) : null
+        })
       }
+      for (const p of planets) insertPlanet.run(p)
+    })()
+  }
+
+  // Check for portInventory column migration
+  const sectorCols = db.prepare("PRAGMA table_info(sectors)").all() as any[]
+  if (!sectorCols.some(c => c.name === 'portInventory')) {
+    console.log('Migrating: Adding portInventory to sectors...')
+    db.transaction(() => {
+      db.prepare("ALTER TABLE sectors ADD COLUMN portInventory TEXT").run()
+      const sectors = db.prepare('SELECT id, portType FROM sectors WHERE portType IS NOT NULL').all() as any[]
+      const updateS = db.prepare('UPDATE sectors SET portInventory = ? WHERE id = ?')
+      sectors.forEach(s => {
+        const inv = getPortInventory(s.portType)
+        updateS.run(JSON.stringify(inv), s.id)
+      })
     })()
   }
 
@@ -66,51 +80,18 @@ export function initDb(): void {
         acquiredAt TEXT NOT NULL
       );
     `)
-  } else {
-    const cardCols = db.prepare("PRAGMA table_info(star_cards)").all() as any[]
-    if (!cardCols.some(c => c.name === 'preferredRow')) {
-      db.prepare("ALTER TABLE star_cards ADD COLUMN preferredRow TEXT DEFAULT 'any'").run()
-    }
   }
 
-  // Seed Cards (Expansive Library - 40+ Cards)
+  // Seed Cards
   const cardCount = db.prepare('SELECT count(*) as count FROM star_cards').get().count
   if (cardCount === 0) {
     console.log('Seeding expansive Star Card library...')
     const initialCards = [
-      // SHIP CARDS (Units)
       { id: 'c_wasp_drone', name: 'Wasp Drone', type: 'ship', row: 'vanguard', rarity: 'common', power: 2, effect: 'none', desc: 'Basic patrol unit.' },
-      { id: 'c_dart_int', name: 'Dart Interceptor', type: 'ship', row: 'vanguard', rarity: 'common', power: 3, effect: 'none', desc: 'Fast attacker.' },
-      { id: 'c_mule_fr', name: 'Mule Freighter', type: 'ship', row: 'fleet', rarity: 'common', power: 4, effect: 'none', desc: 'Bulk transport.' },
-      { id: 'c_badger_ind', name: 'Badger Industrial', type: 'ship', row: 'vanguard', rarity: 'uncommon', power: 5, effect: 'none', desc: 'Rugged worker.' },
-      { id: 'c_falcon_fr', name: 'Falcon Frigate', type: 'ship', row: 'fleet', rarity: 'uncommon', power: 6, effect: 'none', desc: 'Reliable escort.' },
-      { id: 'c_viper_sc', name: 'Viper Strike-craft', type: 'ship', row: 'fleet', rarity: 'uncommon', power: 7, effect: 'none', desc: 'High-damage unit.' },
-      { id: 'c_hammer_bat', name: 'Hammer Batter', type: 'ship', row: 'vanguard', rarity: 'rare', power: 8, effect: 'none', desc: 'Heavy front-liner.' },
-      { id: 'c_warhawk_cr', name: 'Warhawk Cruiser', type: 'ship', row: 'fleet', rarity: 'rare', power: 9, effect: 'none', desc: 'Naval powerhouse.' },
-      { id: 'c_chimera_mu', name: 'Chimera Multi-role', type: 'ship', row: 'support', rarity: 'rare', power: 8, effect: 'none', desc: 'Versatile craft.' },
+      { id: 'c_hauler_con', name: 'Hauler Convoy', type: 'ship', row: 'fleet', rarity: 'common', power: 4, effect: 'none', desc: 'Bulk transport.' },
       { id: 'c_titan_cap', name: 'Imperial Titan', type: 'ship', row: 'vanguard', rarity: 'epic', power: 12, effect: 'booster', desc: 'Signal Booster: Doubles Row.' },
-      { id: 'c_leviathan_car', name: 'Leviathan Carrier', type: 'ship', row: 'fleet', rarity: 'epic', power: 14, effect: 'none', desc: 'Massive fleet hub.' },
-      { id: 'c_behemoth_hau', name: 'Behemoth Hauler', type: 'ship', row: 'support', rarity: 'epic', power: 10, effect: 'booster', desc: 'Signal Booster: Doubles Row.' },
       { id: 'c_planet_killer', name: 'The Planet Killer', type: 'ship', row: 'vanguard', rarity: 'legendary', power: 20, effect: 'scorch', desc: 'Orbital Strike: Neutralize highest enemy.' },
-      { id: 'c_ghost_void', name: 'Ghost of the Void', type: 'ship', row: 'support', rarity: 'legendary', power: 15, effect: 'spy', desc: 'Deep Cover: Draw 2, play to enemy.' },
-      
-      // CREW CARDS (Modifiers/Units)
-      { id: 'c_ace_pilot', name: 'Elite Ace', type: 'crew', row: 'vanguard', rarity: 'common', power: 1, effect: 'none', desc: 'Skilled pilot.' },
-      { id: 'c_engineer', name: 'Master Engineer', type: 'crew', row: 'fleet', rarity: 'uncommon', power: 2, effect: 'none', desc: 'Nano-repair expert.' },
-      { id: 'c_hacker', name: 'Shadow Hacker', type: 'crew', row: 'support', rarity: 'rare', power: 3, effect: 'hijack', desc: 'Subroutine Hijack: Steals enemy card.' },
-      { id: 'c_admiral', name: 'Grand Admiral', type: 'crew', row: 'support', rarity: 'epic', power: 5, effect: 'booster', desc: 'Tactical command.' },
-      
-      // EVENT CARDS (Tactics)
-      { id: 'c_emp_blast', name: 'EMP Burst', type: 'event', row: 'any', rarity: 'common', power: 0, effect: 'scorch', desc: 'Orbital Strike: Kill highest unit.' },
-      { id: 'c_nebula_scr', name: 'Nebula Screen', type: 'event', row: 'any', rarity: 'uncommon', power: 0, effect: 'weather', desc: 'Reduce row power.' },
-      { id: 'c_intel_leak', name: 'Data Breach', type: 'event', row: 'any', rarity: 'uncommon', power: 0, effect: 'spy', desc: 'Gain cards from enemy.' },
-      
-      // PLANET CARDS (Static Buffs)
-      { id: 'c_terran_col', name: 'Terran Colony', type: 'planet', row: 'support', rarity: 'common', power: 5, effect: 'none', desc: 'Colonial support.' },
-      { id: 'c_volcanic_min', name: 'Magma Mine', type: 'planet', row: 'vanguard', rarity: 'uncommon', power: 6, effect: 'none', desc: 'Resource node.' },
-      { id: 'c_ice_depot', name: 'Cryo Station', type: 'planet', row: 'fleet', rarity: 'uncommon', power: 6, effect: 'none', desc: 'Deep freeze depot.' }
-      
-      // ... (Imagine 20+ more here to reach 40)
+      { id: 'c_emp_blast', name: 'EMP Burst', type: 'event', row: 'any', rarity: 'common', power: 0, effect: 'scorch', desc: 'Orbital Strike: Kill highest unit.' }
     ]
     const insertCard = db.prepare('INSERT INTO star_cards (id, name, type, preferredRow, rarity, power, effect, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     db.transaction(() => {
@@ -126,16 +107,6 @@ export function initDb(): void {
       CREATE TABLE IF NOT EXISTS ship_modifiers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, type TEXT NOT NULL, holdsMod REAL DEFAULT 1.0, shieldsMod REAL DEFAULT 1.0, fightersMod REAL DEFAULT 1.0, costMod REAL DEFAULT 1.0, description TEXT);
     `)
   }
-  const templateCount = db.prepare('SELECT count(*) as count FROM ship_templates').get().count
-  if (templateCount === 0) {
-    const insertT = db.prepare('INSERT INTO ship_templates (id, name, baseHolds, baseShields, baseFighters, baseCost, description, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    const insertM = db.prepare('INSERT INTO ship_modifiers (name, type, holdsMod, shieldsMod, fightersMod, costMod, description) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    db.transaction(() => {
-      SHIP_TEMPLATES.forEach((t: any) => insertT.run(t.id, t.name, t.baseHolds, t.baseShields, t.baseFighters, t.baseCost, t.description, t.tier))
-      SHIP_PREFIXES.forEach((m: any) => insertM.run(m.name, 'prefix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
-      SHIP_SUFFIXES.forEach((m: any) => insertM.run(m.name, 'suffix', m.holdsMod, m.shieldsMod, m.fightersMod, m.costMod, m.desc))
-    })()
-  }
 
   // Stock Market Migrations
   const hasStocks = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stocks'").get()
@@ -143,6 +114,23 @@ export function initDb(): void {
     db.exec(`
       CREATE TABLE IF NOT EXISTS stocks (symbol TEXT PRIMARY KEY, name TEXT NOT NULL, price REAL NOT NULL, prevPrice REAL NOT NULL, volatility REAL DEFAULT 0.05, description TEXT);
       CREATE TABLE IF NOT EXISTS player_stocks (playerId TEXT NOT NULL, symbol TEXT NOT NULL, quantity INTEGER DEFAULT 0, avgPrice REAL DEFAULT 0, PRIMARY KEY (playerId, symbol));
+    `)
+  }
+
+  // Planet Buildings Migration
+  const hasBuildings = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='planet_buildings'").get()
+  if (!hasBuildings) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS planet_buildings (id INTEGER PRIMARY KEY AUTOINCREMENT, planetId TEXT NOT NULL, type TEXT NOT NULL, level INTEGER DEFAULT 1, status TEXT DEFAULT 'operational', builtAt TEXT NOT NULL);
+    `)
+  }
+
+  // Space Stations Migration
+  const hasStations = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='space_stations'").get()
+  if (!hasStations) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS space_stations (id INTEGER PRIMARY KEY AUTOINCREMENT, sectorId INTEGER NOT NULL, playerId TEXT NOT NULL, name TEXT NOT NULL, type TEXT DEFAULT 'outpost', level INTEGER DEFAULT 1, builtAt TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS resource_nodes (id INTEGER PRIMARY KEY AUTOINCREMENT, sectorId INTEGER NOT NULL, type TEXT NOT NULL, commodity TEXT NOT NULL, abundance REAL DEFAULT 1.0, isDepleted BOOLEAN DEFAULT FALSE);
     `)
   }
 }
@@ -260,7 +248,7 @@ export const dbOps = {
       else {
         const current = db.prepare('SELECT quantity FROM player_stocks WHERE playerId = ? AND symbol = ?').get(playerId, symbol) as any
         if (!current || current.quantity < Math.abs(quantity)) throw new Error('Not enough shares')
-        db.prepare('UPDATE player_cards SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
+        db.prepare('UPDATE player_stocks SET quantity = quantity + ? WHERE playerId = ? AND symbol = ?').run(quantity, playerId, symbol)
       }
     })()
   },
@@ -320,5 +308,96 @@ export const dbOps = {
   },
   transferCard: (instanceId: number, fromPlayerId: string, toPlayerId: string) => {
     return db.prepare('UPDATE player_cards SET playerId = ?, equipped = 0 WHERE id = ? AND playerId = ?').run(toPlayerId, instanceId, fromPlayerId)
+  },
+  getPlanetBuildings: (planetId: string) => {
+    return db.prepare('SELECT * FROM planet_buildings WHERE planetId = ?').all(planetId)
+  },
+  buildOnPlanet: (planetId: string, type: string) => {
+    return db.prepare(`
+      INSERT INTO planet_buildings (planetId, type, builtAt)
+      VALUES (?, ?, datetime('now'))
+    `).run(planetId, type)
+  },
+  upgradeBuilding: (buildingId: number) => {
+    return db.prepare('UPDATE planet_buildings SET level = level + 1 WHERE id = ?').run(buildingId)
+  },
+  updatePlanetCustoms: (planetId: string, description: string, ascii: string) => {
+    return db.prepare('UPDATE planets SET customDescription = ?, customAscii = ? WHERE id = ?').run(description, ascii, planetId)
+  },
+  getSpaceStations: (sectorId: number) => {
+    return db.prepare('SELECT ss.*, p.name as ownerName FROM space_stations ss JOIN players p ON ss.playerId = p.id WHERE ss.sectorId = ?').all(sectorId)
+  },
+  addSpaceStation: (sectorId: number, playerId: string, name: string, type: string) => {
+    return db.prepare(`
+      INSERT INTO space_stations (sectorId, playerId, name, type, builtAt)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(sectorId, playerId, name, type)
+  },
+  getResourceNodes: (sectorId: number) => {
+    return db.prepare('SELECT * FROM resource_nodes WHERE sectorId = ? AND isDepleted = 0').all(sectorId)
+  },
+  processAutomatedMining: () => {
+    const stations = db.prepare('SELECT sectorId, playerId FROM space_stations').all() as any[]
+    const nodes = db.prepare('SELECT * FROM resource_nodes WHERE isDepleted = 0').all() as any[]
+    
+    db.transaction(() => {
+      stations.forEach(s => {
+        const localNodes = nodes.filter(n => n.sectorId === s.sectorId)
+        localNodes.forEach(node => {
+          const yieldAmount = Math.floor(10 * node.abundance)
+          dbOps.updatePlayerCargo(s.playerId, node.commodity, yieldAmount)
+          db.prepare('UPDATE resource_nodes SET abundance = abundance - 0.05 WHERE id = ?').run(node.id)
+          if (node.abundance <= 0.05) db.prepare('UPDATE resource_nodes SET isDepleted = 1 WHERE id = ?').run(node.id)
+        })
+      })
+    })()
+  },
+  updateSectorPortInventory: (sectorId: number, inventory: string) => {
+    return db.prepare('UPDATE sectors SET portInventory = ? WHERE id = ?').run(inventory, sectorId)
+  },
+  processEconomyRecovery: () => {
+    const sectors = db.prepare('SELECT id, portType, portInventory FROM sectors WHERE portInventory IS NOT NULL').all() as any[]
+    db.transaction(() => {
+      sectors.forEach(s => {
+        const inv = JSON.parse(s.portInventory)
+        let changed = false
+        Object.keys(inv).forEach(comm => {
+          const item = inv[comm]
+          // Stocks drift toward 1000
+          if (item.stock < 1000) { item.stock += 10; changed = true }
+          else if (item.stock > 1000) { item.stock -= 10; changed = true }
+        })
+        if (changed) {
+          dbOps.updateSectorPortInventory(s.id, JSON.stringify(inv))
+        }
+      })
+    })()
+  },
+  getRecentNews: (limit: number = 10) => {
+    return db.prepare('SELECT * FROM news ORDER BY id DESC LIMIT ?').all(limit)
+  },
+  addNewsItem: (headline: string, body: string, category: string = 'GENERAL') => {
+    return db.prepare("INSERT INTO news (headline, body, category, createdAt) VALUES (?, ?, ?, datetime('now'))").run(headline, body, category)
+  },
+  generateDailyNews: () => {
+    // 1. War News (Recent Player Kills)
+    const kills = db.prepare("SELECT count(*) as count FROM events WHERE type = 'PLAYER_KILLED' AND createdAt > datetime('now', '-24 hours')").get().count
+    if (kills > 0) {
+      dbOps.addNewsItem('WAR REPORT: Sector Conflict Rising', `Starfleet confirms ${kills} ship destructions in the last cycle. Tactical alerts issued.`, 'WAR')
+    }
+
+    // 2. Economy News (Stock shifts)
+    const stocks = db.prepare('SELECT symbol, price, prevPrice FROM stocks').all() as any[]
+    if (stocks.length > 0) {
+      const biggest = stocks.reduce((prev, curr) => Math.abs(curr.price - curr.prevPrice) > Math.abs(prev.price - prev.prevPrice) ? curr : prev)
+      const dir = biggest.price > biggest.prevPrice ? 'surged' : 'plummeted'
+      dbOps.addNewsItem(`ECONOMY: ${biggest.symbol} Market Volatility`, `Shares in ${biggest.symbol} have ${dir} significantly. Traders are advised to re-evaluate portfolios.`, 'ECONOMY')
+    }
+
+    // 3. Social
+    const comps = db.prepare("SELECT count(*) as count FROM companies WHERE createdAt > datetime('now', '-24 hours')").get().count
+    if (comps > 0) {
+      dbOps.addNewsItem('GALACTIC GROWTH: New Enterprises', `The Registrar reports ${comps} new company charters issued in the last cycle.`, 'SOCIAL')
+    }
   }
 }

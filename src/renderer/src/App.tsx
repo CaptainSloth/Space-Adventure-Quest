@@ -30,6 +30,7 @@ interface SceneViewModel {
   playerDeck?: any[]
   allStarCards?: any[]
   stockHistory?: number[]
+  planetBuildings?: any[]
 }
 
 interface Notification {
@@ -141,6 +142,11 @@ const App: React.FC = () => {
     if (vm?.title.includes('PLANET:') && key === 'C' && selectedPlanetId) {
       // @ts-ignore
       newVm = await window.api.invoke('claim-planet', selectedPlanetId)
+    } else if (vm?.title.includes('PERSONALIZE') && (key === 'D' || key === 'A')) {
+       // Manual toggle for input UI
+       setVm({ ...vm, title: key === 'D' ? 'PLANET DESCRIPTION' : 'PLANET ASCII ART' })
+       setLoading(false)
+       return
     } else if (vm?.title.includes('PORT') && /^[o|f|e|r|u|q]$/.test(key.toLowerCase())) {
        const metadataRegex = /\[DATA:(\w+):(-?\d+|N\/A):(-?\d+|N\/A)\]/g
        const buyMap: Record<string, string> = { 'o': 'ore', 'f': 'fuel', 'e': 'equipment' }
@@ -182,6 +188,8 @@ const App: React.FC = () => {
        newVm = await window.api.invoke('trade-commodity', 'ore', -1, 30) 
     } else if (vm?.title.includes('ENGINEERING') && key === 'R') {
        setVm({ ...vm, title: 'SHIP RENAMING' })
+       setLoading(false)
+       return
     } else if (vm?.title.includes('COMPANIES') && /^\d+$/.test(key)) {
       const company = vm.availableCompanies?.[parseInt(key) - 1]
       if (company) {
@@ -215,6 +223,17 @@ const App: React.FC = () => {
     setLoading(true)
     // @ts-ignore
     const newVm = await window.api.invoke('rename-ship', name)
+    setVm(newVm)
+    setName('')
+    setLoading(false)
+  }
+
+  const handlePlanetCustom = async () => {
+    if (!name || !selectedPlanetId) return
+    setLoading(true)
+    const type = vm?.title.includes('DESCRIPTION') ? 'description' : 'ascii'
+    // @ts-ignore
+    const newVm = await window.api.invoke('set-planet-customs', selectedPlanetId, type, name)
     setVm(newVm)
     setName('')
     setLoading(false)
@@ -293,6 +312,12 @@ const App: React.FC = () => {
     setVm(newVm)
     setLoading(false)
   }
+
+  const showInputForm = vm.title.includes('REGISTRATION') || 
+                       vm.title.includes('FOUND NEW COMPANY') || 
+                       vm.title.includes('SHIP RENAMING') ||
+                       vm.title.includes('PLANET DESCRIPTION') ||
+                       vm.title.includes('PLANET ASCII ART')
 
   return (
     <div className="container">
@@ -402,19 +427,20 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {(vm.title.includes('REGISTRATION') || vm.title.includes('FOUND NEW COMPANY') || vm.title.includes('SHIP RENAMING')) && (
+        {showInputForm && (
           <div className="registration-form">
-            <p>Enter Name:</p>
-            <input 
-              type="text" 
+            <p>Enter {vm.title.includes('DESCRIPTION') ? 'Description' : vm.title.includes('ASCII') ? 'ASCII (JSON Array)' : 'Name'}:</p>
+            <textarea 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
               autoFocus
               className="bbs-input"
+              rows={vm.title.includes('ASCII') ? 8 : 2}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   if (vm.title.includes('FOUND NEW COMPANY')) handleCreateCompany()
                   if (vm.title.includes('SHIP RENAMING')) handleRenameShip()
+                  if (vm.title.includes('PLANET')) handlePlanetCustom()
                 }
               }}
             />
@@ -433,6 +459,8 @@ const App: React.FC = () => {
               handleCreateCompany()
             } else if (vm.title.includes('SHIP RENAMING') && opt.key === 'S') {
               handleRenameShip()
+            } else if (vm.title.includes('PLANET') && opt.key === 'S') {
+              handlePlanetCustom()
             } else {
               handleAction(opt.key)
             }

@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatSide, OnlinePlayer, ChatMessage, GlobalEvent, PlayerCard, StarCard } from '../types'
-import { getPortInventory } from '../trading'
+import { getPortInventory, calculateDynamicPrice, Commodity } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
 import { dbOps } from '../../main/db'
 import { createDuel, playCard, passRound } from '../duels'
@@ -50,7 +50,10 @@ export const toSerializable = (
   shipyardStock?: any[],
   stockHistory?: number[],
   playerDeck?: PlayerCard[],
-  allStarCards?: StarCard[]
+  allStarCards?: StarCard[],
+  planetBuildings?: any[],
+  spaceStations?: any[],
+  resourceNodes?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -77,6 +80,9 @@ export const toSerializable = (
     stockHistory,
     playerDeck,
     allStarCards,
+    planetBuildings,
+    spaceStations,
+    resourceNodes,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -127,6 +133,7 @@ const registry: SceneRegistry = {
       { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
       { label: 'Star Cards', key: 'G', action: async (s) => ({ ...s, currentScene: 'card_collection' }) },
       { label: 'Card Shop', key: 'K', action: async (s) => ({ ...s, currentScene: 'card_shop' }) },
+      { label: 'Galactic News', key: 'W', action: async (s) => ({ ...s, currentScene: 'galactic_news' }) },
       { label: 'Rankings', key: 'X', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
       { label: 'Stock Market', key: 'M', action: async (s) => ({ ...s, currentScene: 'stock_market' }) },
       { label: 'Company', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) },
@@ -377,15 +384,39 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
       ]
     }
   },
-  sector_view: (state) => ({
-    title: '`%eSECTOR VIEW` %7',
-    description: `Sector: \`%f${state.currentSector?.id}\` %7.`,
-    options: [
-      ...state.currentPlanets.map((p, i) => ({ label: `Land on ${p.name}`, key: (i + 1).toString(), action: async (s: any) => ({ ...s, selectedPlanetId: p.id, currentScene: 'planet_surface' }) })),
-      { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => (s.player!.credits >= 500 ? { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed.' } : { ...s, lastMessage: 'No credits!' }) },
-      { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+  sector_view: (state) => {
+    const deployments = dbOps.getSectorDeployments(state.currentSector!.id)
+    const stations = state.spaceStations || []
+    const nodes = state.resourceNodes || []
+
+    return {
+      title: '`%eSECTOR VIEW` %7',
+      description: `Sector: \`%f${state.currentSector?.id}\` %7.
+
+  \`%bSTATIONS & BASES:\` %7
+  ${stations.length > 0 ? stations.map(s => `- \`%f${s.name}\` %7 (${s.type.toUpperCase()}) [Owner: ${s.ownerName}]`).join('\n') : 'None detected.'}
+
+  \`%bRESOURCE NODES:\` %7
+  ${nodes.length > 0 ? nodes.map(n => `- \`%f${n.type.toUpperCase()}\` %7 (${n.commodity.toUpperCase()}) Abundance: ${n.abundance}`).join('\n') : 'None detected.'}
+
+  \`%bSECTOR ASSETS:\` %7
+  ${deployments.length > 0 ? deployments.map(d => `- \`%f${d.quantity}\` %7 ${d.type}(s)`).join('\n') : 'None detected.'}`,
+      options: [
+        ...state.currentPlanets.map((p, i) => ({ label: `Land on ${p.name}`, key: (i + 1).toString(), action: async (s: any) => ({ ...s, selectedPlanetId: p.id, currentScene: 'planet_surface' }) })),
+        { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => (s.player!.credits >= 500 ? { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed.' } : { ...s, lastMessage: 'No credits!' }) },
+        ...(state.currentPlanets.length === 0 && !stations.find(ss => ss.playerId === state.player?.id) ? [{ 
+          label: 'Establish Outpost (50,000 cr)', 
+          key: 'O', 
+          action: async (s: GameState) => {
+            if (s.player!.credits >= 50000) return { ...s, lastMessage: `Requesting station:outpost:50000:${state.currentSector?.id}` }
+            return { ...s, lastMessage: 'Insufficient credits for a space station!' }
+          }
+        }] : []),
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
+
   planet_surface: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     return {
@@ -409,12 +440,53 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
           const report = dbOps.getPlanetReport(planet!.id)
           return { ...s, lastMessage: report ? report.report : 'No report.' }
         }},
-        ...(!planet?.hasPort ? [{ label: 'Build Port (10k)', key: 'P', action: async (s: any) => (s.player!.credits >= 10000 ? { ...s, lastMessage: `Requesting port construction for ${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) }] : []),
+        ...(!planet?.hasPort ? [{ label: 'Build Port (10k)', key: 'P', action: async (s: GameState) => (s.player!.credits >= 10000 ? { ...s, lastMessage: `Requesting port construction for ${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) }] : []),
+        { label: 'Construction Bay', key: 'C', action: async (s) => ({ ...s, currentScene: 'planet_construction' }) },
+        { label: 'Personalize World', key: 'P', action: async (s) => ({ ...s, currentScene: 'planet_personalize' }) },
         { label: 'Mining', key: 'M', action: async (s) => ({ ...s, currentScene: 'planet_mining' }) },
         { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_surface' }) }
-      ]
-    }
-  },
+        ]
+        }
+        },
+        planet_personalize: (state) => {
+        const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
+        return {
+        title: `\`%ePERSONALIZE: ${planet?.name}\` %7`,
+        description: 'Enter a custom description or ASCII art signature for your world.',
+        options: [
+        { label: 'Set Custom Description', key: 'D', action: async (s) => s },
+        { label: 'Set Custom ASCII Art', key: 'A', action: async (s) => s },
+        { label: 'Reset to Defaults', key: 'R', action: async (s) => {
+          dbOps.updatePlanetCustoms(planet!.id, '', '')
+          return { ...s, lastMessage: 'Planet appearance reset.' }
+        }},
+        { label: 'Back to Management', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_manage' }) }
+        ]
+        }
+        },
+
+        planet_construction: (state) => {
+        const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
+        const buildings = state.planetBuildings || []
+        const buildingDefs = [
+        { type: 'shipyard', name: 'Shipyard', cost: 15000, desc: 'Enables repairs and hull swaps.' },
+        { type: 'defense_grid', name: 'Defense Grid', cost: 20000, desc: 'Automated planetary defense.' },
+        { type: 'sensor_array', name: 'Sensor Array', cost: 8000, desc: 'Increased sector scan range.' },
+        { type: 'cantina', name: 'Cantina', cost: 5000, desc: 'Local venue for duels and rumors.' },
+        { type: 'refinery', name: 'Refinery', cost: 12000, desc: 'Increases resource output.' }
+        ]
+        const existingTypes = buildings.map(b => b.type)
+        const available = buildingDefs.filter(d => !existingTypes.includes(d.type))
+        return {
+        title: `\`%eCONSTRUCTION: ${planet?.name}\` %7`,
+        description: `Operational: ${buildings.length}\nAvailable Projects:\n${available.map(d => `- ${d.name} (${d.cost} cr)`).join('\n')}`,
+        options: [
+        ...available.map((d, i) => ({ label: `Construct ${d.name}`, key: (i + 1).toString(), action: async (s: GameState) => (s.player!.credits >= d.cost ? { ...s, lastMessage: `Requesting building:${d.type}:${d.cost}:${planet?.id}` } : { ...s, lastMessage: 'No credits!' }) })),
+        { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_manage' }) }
+        ]
+        }
+        },
+
   planet_trade: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     const prices = planet?.portPrices ? JSON.parse(planet.portPrices) : { ore: 10, fuel: 20, equipment: 100 }
@@ -445,17 +517,39 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
     }
   },
   port: (state) => {
-    const inventory = getPortInventory(state.currentSector?.portType || 'none')
-    const items = Object.entries(inventory).map(([name, price]) => {
-      const p = price as any
-      return `${name.toUpperCase()}: B:${p.buy} S:${p.sell} [DATA:${name}:${p.buy}:${p.sell}]`
+    const sector = state.currentSector
+    if (!sector || !sector.portInventory) {
+      return {
+        title: '%cPORT SERVICES',
+        description: 'There is no trading port in this sector.',
+        options: [{ label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }]
+      }
+    }
+
+    const inv = JSON.parse(sector.portInventory)
+    const items = Object.entries(inv).map(([name, data]) => {
+      const item = data as any
+      const buyPrice = calculateDynamicPrice(name as Commodity, item.stock, true)
+      const sellPrice = calculateDynamicPrice(name as Commodity, item.stock, false)
+      return `${name.toUpperCase().padEnd(10)}: Stock: ${item.stock.toString().padEnd(5)} | Buy: ${buyPrice > 0 ? buyPrice : 'N/A'} | Sell: ${sellPrice > 0 ? sellPrice : 'N/A'} [DATA:${name}:${buyPrice}:${sellPrice}]`
     })
+
     return {
       title: '%cPORT SERVICES',
-      description: `Welcome. Credits: ${state.player?.credits}\n${items.join('\n')}`,
+      description: `Welcome. Credits: \`%f${state.player?.credits}\` %7
+Current Market (Supply & Demand):
+${items.join('\n')}`,
       options: [
-        ...Object.entries(inventory).filter(([_, p]) => (p as any).sell > 0).map(([name, p]) => ({ label: `Buy ${name}`, key: name[0].toLowerCase(), action: async (s: any) => s })),
-        ...Object.entries(inventory).filter(([_, p]) => (p as any).buy > 0).map(([name, p]) => ({ label: `Sell ${name}`, key: name === 'ore' ? 'r' : name === 'fuel' ? 'u' : 'q', action: async (s: any) => s })),
+        ...Object.entries(inv).filter(([_, data]) => (data as any).sell !== -1).map(([name, data]) => ({
+          label: `Buy 1 ${name}`,
+          key: name[0].toLowerCase(),
+          action: async (s: GameState) => s
+        })),
+        ...Object.entries(inv).filter(([_, data]) => (data as any).buy !== -1).map(([name, data]) => ({
+          label: `Sell 1 ${name}`,
+          key: name === 'ore' ? 'r' : name === 'fuel' ? 'u' : 'q',
+          action: async (s: GameState) => s
+        })),
         { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
       ]
     }
@@ -613,7 +707,55 @@ LOG: ${log.slice(-1)[0]}
     title: '%cNAVIGATION',
     description: `Sector: ${state.currentSector?.id || 1}`,
     options: [
-      ...(state.currentSector?.warps || []).map((id) => ({ label: `Warp ${id}`, key: id.toString(), action: async (s: any) => (s.player!.turns > 0 ? { ...s, player: { ...s.player!, sectorId: id, turns: s.player!.turns - 1 }, currentScene: 'bridge' } : { ...s, lastMessage: 'No turns!' }) })),
+      ...(state.currentSector?.warps || []).map((id) => ({ 
+        label: `Warp ${id}`, 
+        key: id.toString(), 
+        action: async (s: GameState) => {
+          if (!s.player || s.player.turns <= 0) return { ...s, lastMessage: 'No turns!' }
+          
+          const targetSector = dbOps.getSector(id)
+          let lastMsg = `Warped to Sector ${id}.`
+          let finalSectorId = id
+          let finalPlayer = { ...s.player, turns: s.player.turns - 1 }
+
+          // Smuggling Check: Detection in Faction Space
+          const cargo = dbOps.getPlayerCargo(s.player!.id) as any[]
+          const hasContraband = cargo.some(c => c.commodity === 'contraband')
+          const isFactionSpace = id === 1 || id === 500 // HQs
+          
+          if (hasContraband && isFactionSpace && Math.random() < 0.5) {
+            const fine = Math.floor(s.player!.credits * 0.2)
+            dbOps.updatePlayerCredits(s.player!.id, -fine)
+            // Remove contraband
+            const db = dbOps.getDb()
+            db.prepare('DELETE FROM player_cargo WHERE playerId = ? AND commodity = "contraband"').run(s.player!.id)
+            finalPlayer.credits -= fine
+            finalPlayer.alignment -= 50
+            return { 
+              ...s, 
+              player: { ...finalPlayer, sectorId: id }, 
+              currentScene: 'bridge', 
+              lastMessage: `POLICE INTERCEPTION! Contraband detected and confiscated. You have been fined ${fine} cr.` 
+            }
+          }
+
+          // Hazard: Black Hole
+          if (targetSector.type === 'black_hole') {
+            const randomSector = Math.floor(Math.random() * 500) + 1
+            finalSectorId = randomSector
+            finalPlayer.shields = Math.max(0, finalPlayer.shields - 50)
+            lastMsg = `CRITICAL: Pulled into a Black Hole! You have been spat out in Sector ${randomSector}. Hull integrity compromised.`
+          }
+
+          // Hazard: Asteroid Field
+          if (targetSector.type === 'asteroid_field' && Math.random() < 0.3) {
+            finalPlayer.shields = Math.max(0, finalPlayer.shields - 20)
+            lastMsg = `Hull damage! Navigation through asteroid field resulted in minor collisions.`
+          }
+
+          return { ...s, player: { ...finalPlayer, sectorId: finalSectorId }, currentScene: 'bridge', lastMessage: lastMsg }
+        } 
+      })),
       { label: 'Back', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),

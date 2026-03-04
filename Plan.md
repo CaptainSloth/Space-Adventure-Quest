@@ -1233,38 +1233,30 @@ content/base/
 ### Phase 7 — CCG: Star Cards
 > Full card game system
 
-- [ ] Duel engine (extended from LoAF's Gwent system)
+- [x] Duel engine (extended from LoAF's Gwent system)
 - [x] Star Card Database (Definitions & Rarity)
 - [x] Pack Opening System (Buy "Star Packs" at ports)
 - [x] Card Collection Scene (View and manage your deck)
 - [x] Deck Building (Equip up to 5 active cards)
-- [ ] Card definitions (40+ cards, 3 rows)
-- [ ] New effects (shield, hack, warp, overload, commander)
-- [ ] Card acquisition (drops, merchants, prizes)
-- [ ] Deck management (collection view, deck builder)
-- [ ] Card Trading (P2P card exchange via Comm Link)
-- [ ] Card Leveling (Combine duplicates to upgrade)
-- [ ] Cantina scenes (duel venues with varying stakes)
-- [ ] NPC card duel opponents with AI tiers
-- [ ] Admin card editor
-
-### Phase 7 — CCG: Star Cards
-> Full card game system
-
-- [ ] Card definitions (40+ cards, 3 rows)
-- [ ] Duel engine (extended from LoAF's Gwent system)
-- [ ] New effects (shield, hack, warp, overload, commander)
-- [ ] Card acquisition (drops, merchants, prizes)
-- [ ] Deck management (collection view, deck builder)
-- [ ] Cantina scenes (duel venues with varying stakes)
-- [ ] NPC card duel opponents with AI tiers
-- [ ] Admin card editor
+- [x] Card definitions (40+ cards, 3 rows)
+- [x] New effects (shield, hack, warp, overload, commander)
+- [x] Card acquisition (drops, merchants, prizes)
+- [x] Deck management (collection view, deck builder)
+- [x] Card Trading (P2P card exchange via Comm Link)
+- [x] Card Leveling (Combine duplicates to upgrade)
+- [x] Cantina scenes (duel venues with varying stakes)
+- [x] NPC card duel opponents with AI tiers
+- [x] Admin card editor
 
 ### Phase 8 — Planet Customization & Economy
 > Deep planet management and economy tuning
 
-- [ ] Planet buildings (shipyard, defense grid, sensor array, cantina, etc.)
-- [ ] Planet custom ASCII art & descriptions
+- [x] Planet buildings (shipyard, defense grid, sensor array, cantina, etc.)
+- [x] Planet custom ASCII art & descriptions
+- [x] Deep Space Sectors: Unmapped sectors with higher risks/rewards.
+- [x] Black Holes & Anomalies: Hazards that can damage ships or provide warp shortcuts.
+- [x] Space Stations: Player-buildable outposts in empty sectors.
+- [x] Resource Nodes: Asteroid belts and gas clouds for automated mining.
 - [ ] Advanced economy (supply/demand curves, inflation, trade route optimization)
 - [ ] Contraband/smuggling system
 - [ ] Black market locations

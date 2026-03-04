@@ -280,6 +280,48 @@ CREATE TABLE IF NOT EXISTS player_cards (
   FOREIGN KEY (cardId) REFERENCES star_cards(id)
 );
 
+-- Planet Buildings
+CREATE TABLE IF NOT EXISTS planet_buildings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  planetId TEXT NOT NULL,
+  type TEXT NOT NULL,               -- 'shipyard', 'defense_grid', 'sensor_array', 'cantina', 'refinery'
+  level INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'operational', -- 'operational', 'under_construction', 'damaged'
+  builtAt TEXT NOT NULL,
+  FOREIGN KEY (planetId) REFERENCES planets(id)
+);
+
+-- Space Stations (Sector-based)
+CREATE TABLE IF NOT EXISTS space_stations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sectorId INTEGER NOT NULL,
+  playerId TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'outpost',      -- 'outpost', 'refinery', 'fortress'
+  level INTEGER DEFAULT 1,
+  builtAt TEXT NOT NULL,
+  FOREIGN KEY (playerId) REFERENCES players(id)
+);
+
+-- Resource Nodes (Sector-based)
+CREATE TABLE IF NOT EXISTS resource_nodes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sectorId INTEGER NOT NULL,
+  type TEXT NOT NULL,               -- 'asteroid_belt', 'gas_cloud'
+  commodity TEXT NOT NULL,          -- 'ore', 'fuel'
+  abundance REAL DEFAULT 1.0,
+  isDepleted BOOLEAN DEFAULT FALSE
+);
+
+-- Galactic News
+CREATE TABLE IF NOT EXISTS news (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  headline TEXT NOT NULL,
+  body TEXT NOT NULL,
+  category TEXT DEFAULT 'GENERAL',  -- 'ECONOMY', 'WAR', 'SOCIAL'
+  createdAt TEXT NOT NULL
+);
+
 -- World Settings
 CREATE TABLE IF NOT EXISTS world_settings (
   key TEXT PRIMARY KEY,

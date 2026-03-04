@@ -92,6 +92,35 @@ export interface CargoItem {
   quantity: number
 }
 
+export interface PlanetBuilding {
+  id: number
+  planetId: string
+  type: 'shipyard' | 'defense_grid' | 'sensor_array' | 'cantina' | 'refinery'
+  level: number
+  status: string
+  builtAt: string
+}
+
+export interface SpaceStation {
+  id: number
+  sectorId: number
+  playerId: string
+  ownerName?: string
+  name: string
+  type: 'outpost' | 'refinery' | 'fortress'
+  level: number
+  builtAt: string
+}
+
+export interface ResourceNode {
+  id: number
+  sectorId: number
+  type: 'asteroid_belt' | 'gas_cloud'
+  commodity: string
+  abundance: number
+  isDepleted: boolean
+}
+
 export interface StarCard {
   id: string
   name: string
@@ -220,6 +249,9 @@ export interface GameState {
   pendingShipPurchase?: any | null
   playerDeck: PlayerCard[]
   allStarCards: StarCard[]
+  planetBuildings: PlanetBuilding[]
+  spaceStations: SpaceStation[]
+  resourceNodes: ResourceNode[]
   adminBuilder?: {
     templateId?: string
     prefixId?: number
@@ -295,6 +327,9 @@ export interface SerializableSceneViewModel {
   shipyardStock?: any[]
   playerDeck?: PlayerCard[]
   allStarCards?: StarCard[]
+  planetBuildings?: PlanetBuilding[]
+  spaceStations?: SpaceStation[]
+  resourceNodes?: ResourceNode[]
   currentDuel?: DuelState | null
 }
 
