@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS players (
   isAdmin BOOLEAN DEFAULT FALSE,
   companyId TEXT,
   deck TEXT DEFAULT '[]',              -- CCG deck (JSON array of card IDs)
+  weaponLevel INTEGER DEFAULT 1,
+  shieldLevel INTEGER DEFAULT 1,
+  engineLevel INTEGER DEFAULT 1,
   createdAt TEXT NOT NULL
 );
 

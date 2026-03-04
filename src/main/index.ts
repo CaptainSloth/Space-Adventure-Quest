@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { initDb, dbOps } from './db'
+import { initDb, dbOps, getDb } from './db'
 import { getSceneViewModel, toSerializable } from '../engine/scenes'
 import { GameState } from '../engine/types'
 
@@ -9,7 +9,10 @@ let currentState: GameState = {
   player: null,
   currentSector: null,
   currentScene: 'title',
-  lastMessage: null
+  lastMessage: null,
+  currentPlanets: [],
+  selectedPlanetId: null,
+  combat: null
 }
 
 function createWindow(): void {
@@ -51,35 +54,58 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-scene', () => {
-    console.log('IPC: get-scene called, current scene:', currentState.currentScene)
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+    let playerList: { id: string, name: string }[] | undefined
+    if (currentState.currentScene === 'login') {
+      playerList = dbOps.getAllPlayers()
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList)
   })
 
   ipcMain.handle('execute-action', async (_, key: string) => {
-    console.log('IPC: execute-action called with key:', key)
+    const db = getDb()
     const vm = getSceneViewModel(currentState)
     const option = vm.options.find((o) => o.key === key)
+    
     if (option) {
       const newState = await option.action(currentState)
       if (newState) {
-        // If sector changed, update database
-        if (newState.player?.sectorId !== currentState.player?.sectorId) {
-          console.log('Sector changed to:', newState.player?.sectorId)
-          dbOps.updatePlayerSector(newState.player!.id, newState.player!.sectorId)
-          const sectorData = dbOps.getSector(newState.player!.sectorId)
-          newState.currentSector = {
-            ...sectorData,
-            warps: JSON.parse(sectorData.warps)
+        // Persist Player State if changed
+        if (newState.player && newState.player !== currentState.player) {
+          const p = newState.player
+          db.prepare(`
+            UPDATE players SET 
+              credits = ?, 
+              turns = ?, 
+              sectorId = ?, 
+              shields = ?, 
+              weaponLevel = ?, 
+              shieldLevel = ?, 
+              engineLevel = ?
+            WHERE id = ?
+          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.id)
+          
+          // If sector changed, update planets
+          if (p.sectorId !== currentState.player?.sectorId) {
+            const sectorData = dbOps.getSector(p.sectorId)
+            newState.currentSector = {
+              ...sectorData,
+              warps: JSON.parse(sectorData.warps)
+            }
+            newState.currentPlanets = dbOps.getPlanetsBySector(p.sectorId)
           }
         }
         currentState = newState
       }
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+    
+    let playerList: { id: string, name: string }[] | undefined
+    if (currentState.currentScene === 'login') {
+      playerList = dbOps.getAllPlayers()
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList)
   })
 
   ipcMain.handle('create-character', async (_, name: string, faction: string) => {
-    console.log('IPC: create-character called')
     const player = {
       id: Math.random().toString(36).substring(7),
       name,
@@ -94,6 +120,7 @@ app.whenReady().then(() => {
     
     const startingSectorId = faction === 'empire' ? 500 : 1
     const sectorData = dbOps.getSector(startingSectorId)
+    const planets = dbOps.getPlanetsBySector(startingSectorId)
     
     currentState.player = {
       ...player,
@@ -104,14 +131,60 @@ app.whenReady().then(() => {
       experience: 0,
       level: 1,
       shipId: null,
-      faction: player.faction as any
+      faction: player.faction as any,
+      weaponLevel: 1,
+      shieldLevel: 1,
+      engineLevel: 1
     }
     currentState.currentSector = {
       ...sectorData,
       warps: JSON.parse(sectorData.warps)
     }
+    currentState.currentPlanets = planets
     currentState.currentScene = 'bridge'
+    currentState.lastMessage = `Welcome, ${name}!`
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId)
+  })
+
+  ipcMain.handle('login-id', async (_, playerId: string) => {
+    console.log('IPC: login called for ID:', playerId)
+    const db = getDb()
+    const player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId) as any
+    
+    if (!player) {
+      currentState.lastMessage = `Pilot record not found.`
+      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+    }
+
+    const sectorData = dbOps.getSector(player.sectorId)
+    const planets = dbOps.getPlanetsBySector(player.sectorId)
+
+    currentState.player = {
+      ...player,
+      hp: player.hp || 100,
+      maxHp: player.maxHp || 100,
+      shields: player.shields || 0,
+      faction: player.faction as any,
+      weaponLevel: player.weaponLevel || 1,
+      shieldLevel: player.shieldLevel || 1,
+      engineLevel: player.engineLevel || 1
+    }
+    currentState.currentSector = {
+      ...sectorData,
+      warps: JSON.parse(sectorData.warps)
+    }
+    currentState.currentPlanets = planets
+    currentState.currentScene = 'bridge'
+    currentState.lastMessage = `Welcome back, Captain ${player.name}.`
     return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+  })
+
+  ipcMain.handle('claim-planet', async (_, planetId: string) => {
+    if (!currentState.player) return
+    dbOps.claimPlanet(planetId, currentState.player.id, 'player')
+    currentState.currentPlanets = dbOps.getPlanetsBySector(currentState.player.sectorId)
+    currentState.lastMessage = 'Planet claimed!'
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId)
   })
 
   createWindow()

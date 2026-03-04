@@ -1154,17 +1154,17 @@ content/base/
 ### Phase 1 — Foundation (Single-Player Core)
 > Get the basic game working with one player
 
-- [ ] Project scaffolding (Electron + React + Vite + TypeScript + better-sqlite3)
-- [ ] Sansi color code parser + renderer
-- [ ] Core engine architecture (state machine, scene system, choose loop)
-- [ ] Database schema (players, sectors, ships, planets)
-- [ ] Title screen + character creation (name, faction choice)
-- [ ] Bridge scene (main hub)
-- [ ] Galaxy generation (procedural sector graph)
-- [ ] Navigation (move between sectors, turn cost, sector scan)
-- [ ] Basic ship system (3–5 starter ships, buy/sell)
-- [ ] Port trading (buy/sell commodities, price fluctuation)
-- [ ] Basic NPC encounters (2–3 NPCs with dialogue)
+- [x] Project scaffolding (Electron + React + Vite + TypeScript + better-sqlite3)
+- [x] Sansi color code parser + renderer
+- [x] Core engine architecture (state machine, scene system, choose loop)
+- [x] Database schema (players, sectors, ships, planets)
+- [x] Title screen + character creation (name, faction choice)
+- [x] Bridge scene (main hub)
+- [x] Galaxy generation (procedural sector graph)
+- [x] Navigation (move between sectors, turn cost, sector scan)
+- [x] Basic ship system (3–5 starter ships, buy/sell)
+- [x] Port trading (buy/sell commodities, price fluctuation)
+- [x] Basic NPC encounters (2–3 NPCs with dialogue)
 
 ### Phase 2 — Combat & Planets
 > Make space dangerous and give players something to own

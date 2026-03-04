@@ -1,4 +1,5 @@
 export type Faction = 'alliance' | 'empire' | 'neutral'
+export type PlanetType = 'terran' | 'volcanic' | 'ice' | 'gas_giant' | 'desert' | 'ocean' | 'barren'
 
 export type SceneId =
   | 'title'
@@ -44,6 +45,9 @@ export interface Player {
   shields: number
   experience: number
   level: number
+  weaponLevel: number
+  shieldLevel: number
+  engineLevel: number
 }
 
 export interface Sector {
@@ -54,11 +58,54 @@ export interface Sector {
   portType?: number
 }
 
+export interface Planet {
+  id: string
+  sectorId: number
+  name: string
+  type: PlanetType
+  ownerId?: string
+  ownerName?: string // Display name
+  ownerType?: 'player' | 'company'
+  population: number
+  maxPopulation: number
+  credits: number
+  fighters: number
+  shields: number
+  oreMiners: number
+  fuelMiners: number
+  equipmentMiners: number
+  taxRate: number
+  accessPolicy: 'open' | 'faction' | 'company' | 'locked'
+  customDescription?: string
+  landingMessage?: string
+  createdAt: string
+}
+
+export interface CombatSide {
+  id: string
+  name: string
+  shields: number
+  maxShields: number
+  fighters: number
+  weaponPower: number
+  isNpc: boolean
+}
+
+export interface CombatState {
+  attacker: CombatSide
+  defender: CombatSide
+  round: number
+  log: string[]
+}
+
 export interface GameState {
   player: Player | null
   currentSector: Sector | null
   currentScene: SceneId
   lastMessage: string | null
+  currentPlanets: Planet[]
+  selectedPlanetId: string | null
+  combat: CombatState | null
 }
 
 export interface SerializableSceneOption {
@@ -71,6 +118,9 @@ export interface SerializableSceneViewModel {
   description: string
   options: SerializableSceneOption[]
   ascii?: string[]
+  lastMessage?: string | null
+  selectedPlanetId?: string | null
+  playerList?: { id: string, name: string }[]
 }
 
 export interface SceneOption extends SerializableSceneOption {

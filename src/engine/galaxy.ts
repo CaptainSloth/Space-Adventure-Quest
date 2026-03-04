@@ -1,7 +1,10 @@
-import { Sector } from './types'
+import { Sector, Planet } from './types'
 
-export const generateGalaxy = (numSectors: number = 500): Sector[] => {
+const PLANET_TYPES = ['terran', 'volcanic', 'ice', 'gas_giant', 'desert', 'ocean', 'barren']
+
+export const generateGalaxy = (numSectors: number = 500): { sectors: Sector[], planets: Planet[] } => {
   const sectors: Sector[] = []
+  const planets: Planet[] = []
 
   // Create base sectors
   for (let i = 1; i <= numSectors; i++) {
@@ -12,12 +15,31 @@ export const generateGalaxy = (numSectors: number = 500): Sector[] => {
       warps: [],
       portType: Math.random() < 0.4 ? Math.floor(Math.random() * 8) + 1 : undefined
     })
+
+    // Generate 0-5 planets per sector
+    const numPlanets = Math.floor(Math.random() * 6)
+    for (let j = 0; j < numPlanets; j++) {
+      const type = PLANET_TYPES[Math.floor(Math.random() * PLANET_TYPES.length)]
+      planets.push({
+        id: Math.random().toString(36).substring(7),
+        sectorId: i,
+        name: `Planet ${i}-${j + 1}`,
+        type: type as any,
+        population: 0,
+        maxPopulation: type === 'terran' ? 100000 : 10000,
+        credits: 0,
+        fighters: 0,
+        shields: 0,
+        oreMiners: 0,
+        fuelMiners: 0,
+        equipmentMiners: 0,
+        taxRate: 0.1,
+        accessPolicy: 'open',
+        createdAt: new Date().toISOString()
+      })
+    }
   }
 
-  // Generate warp connections using a simplified "nearest neighbor" or random graph approach
-  // We need to ensure connectivity. A simple way is to connect i to i+1 randomly,
-  // and then add some random shortcuts.
-  
   // 1. Ensure path from 1 to numSectors
   for (let i = 1; i < numSectors; i++) {
     connect(sectors, i, i + 1)
@@ -26,22 +48,19 @@ export const generateGalaxy = (numSectors: number = 500): Sector[] => {
   // 2. Add extra random warps (2-6 total per sector)
   for (let i = 1; i <= numSectors; i++) {
     const sector = sectors[i - 1]
-    const connectionsToMake = Math.floor(Math.random() * 4) + 1 // Add 1-4 more
+    const connectionsToMake = Math.floor(Math.random() * 4) + 1 
     
     for (let j = 0; j < connectionsToMake; j++) {
       if (sector.warps.length >= 6) break
-
-      // Pick a random target within a reasonable range to avoid "long jumps" everywhere
       const range = 50
       const targetId = Math.max(1, Math.min(numSectors, i + Math.floor(Math.random() * range * 2) - range))
-      
       if (targetId !== i) {
         connect(sectors, i, targetId)
       }
     }
   }
 
-  return sectors
+  return { sectors, planets }
 }
 
 function connect(sectors: Sector[], id1: number, id2: number) {

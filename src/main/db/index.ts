@@ -15,23 +15,74 @@ export function initDb(): void {
   db.exec(schema)
 
   // Check if galaxy exists
-  const count = db.prepare('SELECT count(*) as count FROM sectors').get().count
-  if (count === 0) {
+  const sectorCount = db.prepare('SELECT count(*) as count FROM sectors').get().count
+  const planetCount = db.prepare('SELECT count(*) as count FROM planets').get().count
+
+  if (sectorCount === 0) {
     console.log('Generating initial galaxy...')
-    const sectors = generateGalaxy(500)
-    const insert = db.prepare(`
+    const { sectors, planets } = generateGalaxy(500)
+    
+    const insertSector = db.prepare(`
       INSERT INTO sectors (id, name, type, warps, portType)
       VALUES (@id, @name, @type, @warps, @portType)
     `)
-    const insertMany = db.transaction((data) => {
-      for (const d of data) {
-        insert.run({
-          ...d,
-          warps: JSON.stringify(d.warps)
-        })
+    
+    const insertPlanet = db.prepare(`
+      INSERT INTO planets (id, sectorId, name, type, population, maxPopulation, taxRate, createdAt)
+      VALUES (@id, @sectorId, @name, @type, @population, @maxPopulation, @taxRate, @createdAt)
+    `)
+
+    db.transaction(() => {
+      for (const s of sectors) {
+        insertSector.run({ ...s, warps: JSON.stringify(s.warps) })
       }
-    })
-    insertMany(sectors)
+      for (const p of planets) {
+        insertPlanet.run(p)
+      }
+    })()
+  } else if (planetCount === 0) {
+    console.log('Migrating: Adding planets to existing sectors...')
+    const sectors = db.prepare('SELECT id FROM sectors').all()
+    const insertPlanet = db.prepare(`
+      INSERT INTO planets (id, sectorId, name, type, population, maxPopulation, taxRate, createdAt)
+      VALUES (@id, @sectorId, @name, @type, @population, @maxPopulation, @taxRate, @createdAt)
+    `)
+
+    const PLANET_TYPES = ['terran', 'volcanic', 'ice', 'gas_giant', 'desert', 'ocean', 'barren']
+
+    db.transaction(() => {
+      for (const s of sectors) {
+        const numPlanets = Math.floor(Math.random() * 6)
+        for (let j = 0; j < numPlanets; j++) {
+          const type = PLANET_TYPES[Math.floor(Math.random() * PLANET_TYPES.length)]
+          insertPlanet.run({
+            id: Math.random().toString(36).substring(7),
+            sectorId: s.id,
+            name: `Planet ${s.id}-${j + 1}`,
+            type: type,
+            population: 0,
+            maxPopulation: type === 'terran' ? 100000 : 10000,
+            taxRate: 0.1,
+            createdAt: new Date().toISOString()
+          })
+        }
+      }
+    })()
+    console.log('Migration complete.')
+  }
+
+  // Check for ship upgrade columns
+  const tableInfo = db.prepare("PRAGMA table_info(players)").all() as any[]
+  const hasWeaponLevel = tableInfo.some(col => col.name === 'weaponLevel')
+  
+  if (!hasWeaponLevel) {
+    console.log('Migrating: Adding ship upgrade columns to players table...')
+    db.transaction(() => {
+      db.prepare('ALTER TABLE players ADD COLUMN weaponLevel INTEGER DEFAULT 1').run()
+      db.prepare('ALTER TABLE players ADD COLUMN shieldLevel INTEGER DEFAULT 1').run()
+      db.prepare('ALTER TABLE players ADD COLUMN engineLevel INTEGER DEFAULT 1').run()
+    })()
+    console.log('Migration complete.')
   }
 }
 
@@ -59,5 +110,37 @@ export const dbOps = {
   },
   updatePlayerSector: (playerId: string, sectorId: number) => {
     return db.prepare('UPDATE players SET sectorId = ?, turns = turns - 1 WHERE id = ?').run(sectorId, playerId)
+  },
+  getAllPlayers: () => {
+    return db.prepare('SELECT id, name FROM players').all()
+  },
+  getPlanetsBySector: (sectorId: number) => {
+    return db.prepare(`
+      SELECT p.*, pl.name as ownerName 
+      FROM planets p 
+      LEFT JOIN players pl ON p.ownerId = pl.id 
+      WHERE p.sectorId = ?
+    `).all(sectorId)
+  },
+  claimPlanet: (planetId: string, playerId: string, ownerType: 'player' | 'company') => {
+    return db.prepare('UPDATE planets SET ownerId = ?, ownerType = ? WHERE id = ?').run(playerId, ownerType, planetId)
+  },
+  getNpcCooldown: (npcId: string) => {
+    return db.prepare('SELECT value FROM world_settings WHERE key = ?').get(`cooldown_npc_${npcId}`)
+  },
+  setNpcCooldown: (npcId: string, timestamp: string) => {
+    return db.prepare('INSERT OR REPLACE INTO world_settings (key, value) VALUES (?, ?)').run(`cooldown_npc_${npcId}`, timestamp)
+  },
+  updatePlayerCredits: (playerId: string, amount: number) => {
+    return db.prepare('UPDATE players SET credits = credits + ? WHERE id = ?').run(amount, playerId)
+  },
+  resetAllNpcCooldowns: () => {
+    return db.prepare("DELETE FROM world_settings WHERE key LIKE 'cooldown_npc_%'").run()
+  },
+  setPlayerAlignment: (playerId: string, alignment: number) => {
+    return db.prepare('UPDATE players SET alignment = ? WHERE id = ?').run(alignment, playerId)
+  },
+  refillPlayerTurns: (playerId: string) => {
+    return db.prepare('UPDATE players SET turns = maxTurns WHERE id = ?').run(playerId)
   }
 }
