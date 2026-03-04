@@ -486,7 +486,8 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
 
     const inventoryList = deck.map((c, i) => {
       const color = rarityColors[c.rarity] || '%7'
-      return `${i + 1}. ${c.equipped ? '`%a[E]` %7' : '   '} ${color}${c.name.padEnd(18)}%7 (${c.type.toUpperCase()})`
+      const count = deck.filter(cc => cc.id === c.id).length
+      return `${i + 1}. ${c.equipped ? '`%a[E]` %7' : '   '} ${color}${c.name.padEnd(18)}%7 (${c.type.toUpperCase()}) Lvl:${c.level} ${count > 1 ? `\`%b[x${count}]\` %7` : ''}`
     }).join('\n')
 
     return {
@@ -510,6 +511,14 @@ Use keys 1-9 to toggle equipment.`,
             return { ...s, lastMessage: `Requesting ${c.equipped ? 'unequip' : 'equip'} for instance ${c.instanceId}` }
           } 
         })),
+        { label: 'Combine Duplicates', key: 'C', action: async (s) => {
+          // Find first card with count > 1
+          const duplicates = deck.filter((c, index) => deck.findIndex(cc => cc.id === c.id) !== index)
+          if (duplicates.length > 0) {
+            return { ...s, lastMessage: `Requesting card combination for ${duplicates[0].id}` }
+          }
+          return { ...s, lastMessage: 'No duplicates found to combine.' }
+        }},
         { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
       ]
     }
@@ -555,7 +564,20 @@ LOG: ${log.slice(-1)[0]}
       return {
         title: '`%bDUEL CONCLUDED` %7',
         description: board + `\n\n\`%f${winner === 'player' ? 'VICTORY!' : 'DEFEAT!'}\` %7`,
-        options: [{ label: 'Return to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge', currentDuel: null }) }]
+        options: [{ 
+          label: 'Return to Bridge', 
+          key: 'B', 
+          action: async (s) => {
+            let msg = 'Duel finished.'
+            if (winner === 'player') {
+              const all = dbOps.getAllStarCards()
+              const prize = all[Math.floor(Math.random() * all.length)]
+              dbOps.addPlayerCard(s.player!.id, prize.id)
+              msg = `VICTORY! You earned a reward card: ${prize.name}.`
+            }
+            return { ...s, currentScene: 'bridge', currentDuel: null, lastMessage: msg }
+          } 
+        }]
       }
     }
 

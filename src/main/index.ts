@@ -187,6 +187,17 @@ app.whenReady().then(() => {
           newState.lastMessage = isEquip ? 'Card equipped.' : 'Card unequipped.'
         }
 
+        // Handle CCG Leveling Request
+        if (newState.lastMessage?.includes('Requesting card combination for')) {
+          const cardId = newState.lastMessage.split('for ')[1]
+          try {
+            dbOps.combineCards(newState.player!.id, cardId)
+            newState.lastMessage = 'Cards combined! One card has leveled up.'
+          } catch (e: any) {
+            newState.lastMessage = `Combination failed: ${e.message}`
+          }
+        }
+
         // Handle CCG Pack Purchase
         if (newState.lastMessage === 'Requesting Star Pack purchase...') {
           if (newState.player!.credits >= 500) {

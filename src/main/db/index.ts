@@ -307,5 +307,18 @@ export const dbOps = {
   },
   deleteStarCardDefinition: (id: string) => {
     return db.prepare('DELETE FROM star_cards WHERE id = ?').run(id)
+  },
+  combineCards: (playerId: string, cardId: string) => {
+    const instances = db.prepare('SELECT id FROM player_cards WHERE playerId = ? AND cardId = ? AND level = 1 LIMIT 2').all(playerId, cardId)
+    if (instances.length < 2) throw new Error('Need at least 2 Level 1 cards to combine.')
+    
+    return db.transaction(() => {
+      // Delete one, upgrade the other
+      db.prepare('DELETE FROM player_cards WHERE id = ?').run(instances[1].id)
+      db.prepare('UPDATE player_cards SET level = level + 1 WHERE id = ?').run(instances[0].id)
+    })()
+  },
+  transferCard: (instanceId: number, fromPlayerId: string, toPlayerId: string) => {
+    return db.prepare('UPDATE player_cards SET playerId = ?, equipped = 0 WHERE id = ? AND playerId = ?').run(toPlayerId, instanceId, fromPlayerId)
   }
 }
