@@ -18,6 +18,15 @@ const getAlignmentTitle = (alignment: number): string => {
   return '%7[NEUTRAL]'
 }
 
+const getShipName = (id: string | null): string => {
+  const names: Record<string, string> = {
+    'scout_wasp': 'Wasp Scout',
+    'trader_hauler': 'Hauler',
+    'frigate_falcon': 'Falcon Frigate'
+  }
+  return names[id || ''] || 'Escape Pod'
+}
+
 export const toSerializable = (
   vm: SceneViewModel, 
   lastMessage?: string | null, 
@@ -32,7 +41,9 @@ export const toSerializable = (
   companyMembers?: any[],
   availableCompanies?: any[],
   companyChatMessages?: any[],
-  companyAlliances?: any[]
+  companyAlliances?: any[],
+  playerCargo?: any[],
+  hudStats?: any | null
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -51,6 +62,8 @@ export const toSerializable = (
     availableCompanies,
     companyChatMessages,
     companyAlliances,
+    playerCargo,
+    hudStats,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -95,10 +108,7 @@ const registry: SceneRegistry = {
   }),
   bridge: (state) => ({
     title: '`%eSHIP BRIDGE` %7',
-    description: `Title: ${getAlignmentTitle(state.player?.alignment || 0)} \`%f${state.player?.name}\` %7
-Sector: \`%f${state.player?.sectorId}\` %7 | Turns: \`%f${state.player?.turns}\` %7
-Status: \`%aONLINE\` %7 | Shields: \`%c${state.player?.shields}%\` %7
-${state.currentCompany ? `Company: \`%b${state.currentCompany.name}\` %7` : ''}`,
+    description: `Order received, Captain. Status scan complete.`,
     ascii: [
       "      `%8_________`%7",
       "     `%8/         \\`%7",
@@ -113,7 +123,8 @@ ${state.currentCompany ? `Company: \`%b${state.currentCompany.name}\` %7` : ''}`
       { label: 'Navigation', key: 'N', action: async (s) => ({ ...s, currentScene: 'navigation' }) },
       { label: 'Sector View', key: 'V', action: async (s) => ({ ...s, currentScene: 'sector_view' }) },
       { label: 'Port Services', key: 'P', action: async (s) => ({ ...s, currentScene: 'port' }) },
-      { label: 'Shipyard', key: 'Y', action: async (s) => ({ ...s, currentScene: 'shipyard' }) },
+      { label: 'Ship Showroom', key: 'Y', action: async (s) => ({ ...s, currentScene: 'shipyard' }) },
+      { label: 'Engineering Bay', key: 'E', action: async (s) => ({ ...s, currentScene: 'station_services' }) },
       { label: 'Inventory', key: 'I', action: async (s) => ({ ...s, currentScene: 'inventory' }) },
       { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
       { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
@@ -124,6 +135,63 @@ ${state.currentCompany ? `Company: \`%b${state.currentCompany.name}\` %7` : ''}`
       { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
     ]
   }),
+  shipyard: (state) => ({
+    title: '`%eGALACTIC SHIP SHOWROOM` %7',
+    description: `Welcome to the showroom. Browse our selection of specialized hulls.`,
+    options: [
+      { label: 'Buy Wasp Scout (2500 cr)', key: '1', action: async (s) => {
+        if (s.player!.credits >= 2500) {
+          return { ...s, player: { ...s.player!, credits: s.player!.credits - 2500, shipId: 'scout_wasp' }, lastMessage: 'New ship: Wasp Scout.' }
+        }
+        return { ...s, lastMessage: 'Not enough credits!' }
+      }},
+      { label: 'Buy Hauler (5000 cr)', key: '2', action: async (s) => {
+        if (s.player!.credits >= 5000) {
+          return { ...s, player: { ...s.player!, credits: s.player!.credits - 5000, shipId: 'trader_hauler' }, lastMessage: 'New ship: Hauler.' }
+        }
+        return { ...s, lastMessage: 'Not enough credits!' }
+      }},
+      { label: 'Buy Falcon Frigate (15000 cr)', key: '3', action: async (s) => {
+        if (s.player!.credits >= 15000) {
+          return { ...s, player: { ...s.player!, credits: s.player!.credits - 15000, shipId: 'frigate_falcon' }, lastMessage: 'New ship: Falcon Frigate.' }
+        }
+        return { ...s, lastMessage: 'Not enough credits!' }
+      }},
+      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+    ]
+  }),
+  station_services: (state) => {
+    const weaponCost = (state.player?.weaponLevel || 1) * 1000
+    const shieldCost = (state.player?.shieldLevel || 1) * 1000
+    const engineCost = (state.player?.engineLevel || 1) * 1000
+
+    return {
+      title: '`%eENGINEERING BAY` %7',
+      description: `Current Ship: \`%b${getShipName(state.player?.shipId || null)}\` %7
+Maintenance and upgrade protocols active.`,
+      options: [
+        { label: `Upgrade Weapons (LVL ${state.player!.weaponLevel + 1}) [${weaponCost} cr]`, key: 'W', action: async (s) => {
+          if (s.player!.credits >= weaponCost) {
+             return { ...s, player: { ...s.player!, credits: s.player!.credits - weaponCost, weaponLevel: s.player!.weaponLevel + 1 }, lastMessage: 'Weapons upgraded!' }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: `Upgrade Shields (LVL ${state.player!.shieldLevel + 1}) [${shieldCost} cr]`, key: 'S', action: async (s) => {
+          if (s.player!.credits >= shieldCost) {
+             return { ...s, player: { ...s.player!, credits: s.player!.credits - shieldCost, shieldLevel: s.player!.shieldLevel + 1, maxShields: (s.player!.shieldLevel + 1) * 100 }, lastMessage: 'Shields upgraded!' }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: `Upgrade Engines (LVL ${state.player!.engineLevel + 1}) [${engineCost} cr]`, key: 'E', action: async (s) => {
+          if (s.player!.credits >= engineCost) {
+             return { ...s, player: { ...s.player!, credits: s.player!.credits - engineCost, engineLevel: s.player!.engineLevel + 1 }, lastMessage: 'Engines upgraded!' }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   company: (state) => {
     if (state.currentCompany) {
       return {
@@ -137,7 +205,7 @@ Secure company link active.`,
           { label: 'Member List', key: 'M', action: async (s) => ({ ...s, currentScene: 'company_members' }) },
           { label: 'Private Chat', key: 'C', action: async (s) => ({ ...s, currentScene: 'company_chat' }) },
           { label: 'Treasury (Deposit 1k)', key: 'T', action: async (s) => {
-             return { ...s, lastMessage: 'Depositing credits...' } // handled by IPC override in App.tsx
+             return { ...s, lastMessage: 'Depositing credits...' }
           }},
           { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
         ]
@@ -169,14 +237,26 @@ You can found a new company for \`%e5000\` %7 credits or join an existing one.`,
       { label: 'Cancel', key: 'C', action: async (s) => ({ ...s, currentScene: 'company' }) }
     ]
   }),
-  company_members: (state) => ({
-    title: '`%bCOMPANY MEMBERS` %7',
-    description: `Current roster for \`%f${state.currentCompany?.name}\` %7:
-${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCase()}] - Level \`%a${m.playerLevel}\` %7`).join('\n')}`,
-    options: [
-      { label: 'Back to Company', key: 'B', action: async (s) => ({ ...s, currentScene: 'company' }) }
-    ]
-  }),
+  company_members: (state) => {
+    const formatActivity = (lastSeen: string, lastLogin: string) => {
+      const now = new Date()
+      const seen = new Date(lastSeen)
+      const login = new Date(lastLogin)
+      
+      if (now.getTime() - seen.getTime() < 120000) return '%a[ONLINE]%7'
+      if (now.toDateString() === login.toDateString()) return '%b[TODAY]%7'
+      return '%8[INACTIVE]%7'
+    }
+
+    return {
+      title: '`%bCOMPANY MEMBERS` %7',
+      description: `Current roster for \`%f${state.currentCompany?.name}\` %7:
+${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCase()}] ${formatActivity(m.lastSeen, m.lastLoginAt)}`).join('\n')}`,
+      options: [
+        { label: 'Back to Company', key: 'B', action: async (s) => ({ ...s, currentScene: 'company' }) }
+      ]
+    }
+  },
   company_chat: (state) => ({
     title: '`%bCOMPANY CHAT` %7',
     description: `Secure channel for \`%f${state.currentCompany?.name}\` %7.`,
@@ -206,29 +286,40 @@ ${state.companyMembers.map(m => `- \`%f${m.playerName}\` %7 [${m.role.toUpperCas
       ]
     }
   },
-  bounty_board: (state) => ({
-    title: '`%bBOUNTY BOARD` %7',
-    description: `Active missions for Captain \`%f${state.player?.name}\` %7:
-${state.bounties.length > 0 
-  ? state.bounties.map(b => `- \`%e${b.type.toUpperCase()}\` %7: ${b.target} (${b.progress}/${b.required}) - Reward: \`%f${b.reward}\` %7 cr`).join('\n')
-  : 'No active bounties. Check back later.'}`,
-    options: [
-      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+  bounty_board: (state) => {
+    const personal = state.bounties.filter(b => b.playerId === state.player?.id)
+    const company = state.bounties.filter(b => b.companyId === state.player?.companyId)
+
+    return {
+      title: '`%bBOUNTY BOARD` %7',
+      description: `
+\`%ePERSONAL MISSIONS\` %7
+${personal.length > 0 ? personal.map(b => `- \`%f${b.type.toUpperCase()}\` %7: ${b.target} (${b.progress}/${b.required}) -> \`%f${b.reward}\` %7 cr`).join('\n') : 'None.'}
+
+\`%bCOMPANY MISSIONS\` %7
+${company.length > 0 ? company.map(b => `- \`%f${b.type.toUpperCase()}\` %7: ${b.target} (${b.progress}/${b.required}) -> \`%e${b.reward}\` %7 cr (To Treasury)`).join('\n') : 'None.'}
+`,
+      options: [
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   rankings: (state) => {
     const r = state.rankings
     return {
       title: '`%eGALACTIC RANKINGS` %7',
       description: `
 \`%bTOP PILOTS BY NET WORTH\` %7
-${r?.netWorth.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - \`%e${e.value}\` %7 cr`).join('\n')}
+${r?.netWorth.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - \`%e${e.value}\` %7 cr`).join('\n')}
+
+\`%bTOP COMPANIES (TREASURY)\` %7
+${r?.companies?.slice(0, 5).map((e: any, i: number) => `${i + 1}. \`%b${e.name}\` %7 - \`%e${e.value}\` %7 cr`).join('\n') || 'None.'}
 
 \`%1TOP HUNTERS (KILLS)\` %7
-${r?.kills.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - \`%1${e.value}\` %7 kills`).join('\n')}
+${r?.kills.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - \`%1${e.value}\` %7 kills`).join('\n')}
 
 \`%aMOST NOTORIOUS (ALIGNMENT)\` %7
-${r?.alignment.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.value}]`).join('\n')}
+${r?.alignment.slice(0, 5).map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.value}]`).join('\n')}
 `,
       options: [
         { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
@@ -252,6 +343,7 @@ ${r?.alignment.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.value}]`).join
       { label: 'Generate Test Bounty', key: 'G', action: async (s) => {
         dbOps.createBounty({
           playerId: s.player!.id,
+          companyId: null,
           type: 'kill',
           target: 'npc_vex',
           required: 1,
@@ -262,41 +354,28 @@ ${r?.alignment.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.value}]`).join
       }},
       { label: 'Alignment: HERO', key: 'H', action: async (s) => ({ ...s, player: { ...s.player!, alignment: 500 }, lastMessage: 'Alignment set to Heroic.' }) },
       { label: 'Alignment: VILLAIN', key: 'V', action: async (s) => ({ ...s, player: { ...s.player!, alignment: -500 }, lastMessage: 'Alignment set to Villainous.' }) },
+      { label: 'NPC Editor', key: 'N', action: async (s) => ({ ...s, currentScene: 'admin_npcs' }) },
       { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
-  shipyard: (state) => {
-    const weaponCost = (state.player?.weaponLevel || 1) * 1000
-    const shieldCost = (state.player?.shieldLevel || 1) * 1000
-    const engineCost = (state.player?.engineLevel || 1) * 1000
-
+  admin_npcs: (state) => {
+    const npcs = dbOps.getNpcsInSector(state.player!.sectorId) as any[]
     return {
-      title: '`%eGALACTIC SHIPYARD` %7',
-      description: `Credits: \`%f${state.player?.credits}\` %7
-
-Weapon Level: \`%f${state.player?.weaponLevel}\` %7 -> [W] Upgrade (\`%e${weaponCost}\` %7 credits)
-Shield Level: \`%f${state.player?.shieldLevel}\` %7 -> [S] Upgrade (\`%e${shieldCost}\` %7 credits)
-Engine Level: \`%f${state.player?.engineLevel}\` %7 -> [E] Upgrade (\`%e${engineCost}\` %7 credits)`,
+      title: '`%1ADMIN: NPC EDITOR` %7',
+      description: `NPCs in Sector \`%f${state.player!.sectorId}\` %7:
+${npcs.map((n, i) => `${i + 1}. \`%f${n.name}\` %7 - Pers: ${n.personality}`).join('\n')}`,
       options: [
-        { label: 'Upgrade Weapons', key: 'W', action: async (s) => {
-          if (s.player!.credits >= weaponCost) {
-             return { ...s, player: { ...s.player!, credits: s.player!.credits - weaponCost, weaponLevel: s.player!.weaponLevel + 1 }, lastMessage: 'Weapons upgraded!' }
+        ...npcs.map((n, i) => ({
+          label: `Cycle Greed for ${n.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            const p = JSON.parse(n.personality)
+            p.greed = (p.greed + 20) % 100
+            dbOps.updateNpcStats(n.id, JSON.stringify(p))
+            return { ...s, lastMessage: `${n.name} greed set to ${p.greed}.` }
           }
-          return { ...s, lastMessage: 'Not enough credits!' }
-        }},
-        { label: 'Upgrade Shields', key: 'S', action: async (s) => {
-          if (s.player!.credits >= shieldCost) {
-             return { ...s, player: { ...s.player!, credits: s.player!.credits - shieldCost, shieldLevel: s.player!.shieldLevel + 1, maxShields: (s.player!.shieldLevel + 1) * 100 }, lastMessage: 'Shields upgraded!' }
-          }
-          return { ...s, lastMessage: 'Not enough credits!' }
-        }},
-        { label: 'Upgrade Engines', key: 'E', action: async (s) => {
-          if (s.player!.credits >= engineCost) {
-             return { ...s, player: { ...s.player!, credits: s.player!.credits - engineCost, engineLevel: s.player!.engineLevel + 1 }, lastMessage: 'Engines upgraded!' }
-          }
-          return { ...s, lastMessage: 'Not enough credits!' }
-        }},
-        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+        })),
+        { label: 'Back to Admin', key: 'B', action: async (s) => ({ ...s, currentScene: 'admin' }) }
       ]
     }
   },
@@ -467,31 +546,33 @@ Assignments:
 
     const inventory = getPortInventory(portType)
     const items = Object.entries(inventory).map(([name, price]) => {
-      return `${name.toUpperCase()}: Buy: ${price.buy > 0 ? price.buy : 'N/A'} | Sell: ${price.sell > 0 ? price.sell : 'N/A'}`
+      const p = price as any
+      return `${name.toUpperCase()}: Buy: ${p.buy > 0 ? p.buy : 'N/A'} | Sell: ${p.sell > 0 ? p.sell : 'N/A'} [DATA:${name}:${p.buy}:${p.sell}]`
     })
 
     return {
       title: '%cPORT SERVICES',
-      description: `Welcome to the port. Our current prices:
+      description: `Welcome to the port. Credits: \`%f${state.player?.credits}\` %7
+Current Prices:
 ${items.join('\n')}`,
       options: [
-        { label: 'Buy Commodities', key: 'B', action: async (s) => ({ ...s, lastMessage: 'Buying not yet implemented' }) },
-        { label: 'Sell Commodities', key: 'S', action: async (s) => ({ ...s, lastMessage: 'Selling not yet implemented' }) },
+        ...Object.entries(inventory).filter(([_, p]) => (p as any).sell > 0).map(([name, p]) => ({
+          label: `Buy 1 ${name} (${(p as any).sell} cr)`,
+          key: name[0].toLowerCase(),
+          action: async (s: GameState) => s
+        })),
+        ...Object.entries(inventory).filter(([_, p]) => (p as any).buy > 0).map(([name, p]) => ({
+          label: `Sell 1 ${name} (${(p as any).buy} cr)`,
+          key: name === 'ore' ? 'r' : name === 'fuel' ? 'u' : 'q',
+          action: async (s: GameState) => s
+        })),
         { label: 'Leave Port', key: 'L', action: async (s) => ({ ...s, lastMessage: null, currentScene: 'bridge' }) }
       ]
     }
   },
   inventory: (state) => ({
     title: '%yINVENTORY & STATUS',
-    description: `Pilot: ${state.player?.name}
-Faction: ${state.player?.faction} | Title: ${getAlignmentTitle(state.player?.alignment || 0)}
-Credits: ${state.player?.credits}
-Turns: ${state.player?.turns}/${state.player?.maxTurns}
-Location: Sector ${state.player?.sectorId}
-Weapon Level: ${state.player?.weaponLevel}
-Shield Level: ${state.player?.shieldLevel}
-Engine Level: ${state.player?.engineLevel}
-Alignment: ${state.player?.alignment}`,
+    description: `Detailed cargo and ship status.`,
     options: [
       { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
@@ -592,7 +673,7 @@ Hazards: None`,
               return {
                 ...s,
                 currentScene: 'combat',
-                lastMessage: null,
+                lastMessage: null, // Clear stale admin/world messages
                 combat: initCombat(attacker, defender)
               }
             }
@@ -615,7 +696,7 @@ Hazards: None`,
             const defender: CombatSide = {
               id: p.id,
               name: p.name,
-              shields: 100,
+              shields: 100, // We would fetch their real shields here ideally
               maxShields: 100,
               fighters: 0,
               weaponPower: 15,
@@ -677,7 +758,7 @@ ${log.slice(-5).join('\n')}
                 if (blockade) dbOps.removeSectorDeployment(blockade.id)
               } else {
                 dbOps.setNpcCooldown(defender.id, new Date().toISOString())
-                const completed = dbOps.updateBountyProgress(s.player!.id, 'kill', defender.id)
+                const completed = dbOps.updateBountyProgress(s.player!.id, 'kill', defender.id, s.player!.companyId)
                 if (completed) bountyMsg = '`%bBOUNTY COMPLETED!` %7'
               }
             } else {
@@ -755,20 +836,59 @@ ${log.slice(-5).join('\n')}
       { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
-  npc_dialogue: (state) => ({
-    title: '%fCAPTAIN VEX',
-    description: '"Well, well... if it isn\'t another pilot looking for trouble in the rim. What do you want?"',
-    ascii: [
-      "   (o.o)   ",
-      "    <|>    ",
-      "    / \\    "
-    ],
-    options: [
-      { label: '"Who are you?"', key: '1', action: async (s) => ({ ...s, lastMessage: 'Vex laughs.' }) },
-      { label: '"Got any rumors?"', key: '2', action: async (s) => ({ ...s, lastMessage: 'No free info, kid.' }) },
-      { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+  npc_dialogue: (state) => {
+    const npc = { 
+      id: 'npc_vex', 
+      name: 'Captain Vex', 
+      title: 'Outlaw Trader',
+      personality: { greed: 80, friendliness: 40 }
+    }
+    const memories = dbOps.getNpcMemories(npc.id, state.player!.id) as any[]
+    const sentiment = memories.reduce((acc, m) => acc + m.sentiment, 0)
+
+    let greeting = '"Well, well... another pilot in the rim. What do you want?"'
+    if (memories.length > 0) {
+      if (sentiment > 50) greeting = `"Ah, Captain ${state.player!.name}! Good to see a friendly face. Looking for a deal?"`
+      else if (sentiment < -50) greeting = '"You again? I should have blasted you. Speak quickly or leave."'
+      else greeting = `"Back again, ${state.player!.name}? Make it fast."`
+    }
+
+    const priceMod = 1 + (npc.personality.greed / 100) - (sentiment / 200)
+
+    return {
+      title: `%f${npc.name.toUpperCase()} - ${npc.title.toUpperCase()}`,
+      description: greeting,
+      ascii: [
+        "   (o.o)   ",
+        "    <|>    ",
+        "    / \\    "
+      ],
+      options: [
+        { label: '"Who are you?"', key: '1', action: async (s) => {
+          dbOps.addNpcMemory(npc.id, s.player!.id, 'chat', 5, 'Identity')
+          return { ...s, lastMessage: 'Vex tells you a tall tale about the Great Warp Collapse.' }
+        }},
+        { label: '"Trade Ore (30 cr)"', key: 'T', action: async (s) => {
+          return s // App.tsx will call trade-commodity with quantity -1
+        }},
+        { label: '"Got any work?"', key: 'Q', action: async (s) => {
+          if (sentiment < 0) return { ...s, lastMessage: 'Vex: "I don\'t trust you enough for this job, kid."' }
+          
+          dbOps.createBounty({
+            playerId: s.player!.id,
+            companyId: null,
+            type: 'explore',
+            target: 'Sector 42',
+            required: 1,
+            reward: 1500,
+            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+          })
+          return { ...s, lastMessage: 'Vex: "I need someone to scout Sector 42. There\'s a heavy reward if you make it back."' }
+        }},
+        { label: 'Leave', key: 'L', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
 }
 
 export const getSceneViewModel = (state: GameState): SceneViewModel => {
