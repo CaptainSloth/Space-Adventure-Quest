@@ -1,8 +1,8 @@
 import { app } from 'electron'
-import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatSide } from '../types'
+import { GameState, SceneViewModel, SceneId, SerializableSceneViewModel, CombatSide, OnlinePlayer, ChatMessage, GlobalEvent } from '../types'
 import { getPortInventory } from '../trading'
 import { initCombat, processCombatRound } from '../combat'
-import { dbOps, getDb } from '../../main/db'
+import { dbOps } from '../../main/db'
 
 export type SceneRegistry = {
   [K in SceneId]?: (state: GameState) => SceneViewModel
@@ -22,7 +22,12 @@ export const toSerializable = (
   vm: SceneViewModel, 
   lastMessage?: string | null, 
   selectedPlanetId?: string | null,
-  playerList?: { id: string, name: string }[]
+  playerList?: { id: string, name: string }[],
+  onlinePlayers?: OnlinePlayer[],
+  chatMessages?: ChatMessage[],
+  globalEvents?: GlobalEvent[],
+  rankings?: any,
+  bounties?: any[]
 ): SerializableSceneViewModel => {
   return {
     title: vm.title,
@@ -31,6 +36,11 @@ export const toSerializable = (
     lastMessage,
     selectedPlanetId,
     playerList,
+    onlinePlayers,
+    chatMessages,
+    globalEvents,
+    rankings,
+    bounties,
     options: vm.options.map(o => ({ label: o.label, key: o.key }))
   }
 }
@@ -97,9 +107,41 @@ What are your orders, Captain?`,
       { label: 'Shipyard', key: 'Y', action: async (s) => ({ ...s, currentScene: 'shipyard' }) },
       { label: 'Inventory', key: 'I', action: async (s) => ({ ...s, currentScene: 'inventory' }) },
       { label: 'Status Scan', key: 'S', action: async (s) => ({ ...s, currentScene: 'scan' }) },
+      { label: 'Bounty Board', key: 'D', action: async (s) => ({ ...s, currentScene: 'bounty_board' }) },
+      { label: 'Rankings', key: 'K', action: async (s) => ({ ...s, currentScene: 'rankings' }) },
+      { label: 'Comm Link (Chat)', key: 'C', action: async (s) => ({ ...s, currentScene: 'messages' }) },
       { label: 'ADMIN MODE', key: '!', action: async (s) => ({ ...s, currentScene: 'admin' }) }
     ]
   }),
+  bounty_board: (state) => ({
+    title: '`%bBOUNTY BOARD` %7',
+    description: `Active missions for Captain \`%f${state.player?.name}\` %7:
+${state.bounties.length > 0 
+  ? state.bounties.map(b => `- \`%e${b.type.toUpperCase()}\` %7: ${b.target} (${b.progress}/${b.required}) - Reward: \`%f${b.reward}\` %7 cr`).join('\n')
+  : 'No active bounties. Check back later.'}`,
+    options: [
+      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+    ]
+  }),
+  rankings: (state) => {
+    const r = state.rankings
+    return {
+      title: '`%eGALACTIC RANKINGS` %7',
+      description: `
+\`%bTOP PILOTS BY NET WORTH\` %7
+${r?.netWorth.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - \`%e${e.value}\` %7 cr`).join('\n')}
+
+\`%1TOP HUNTERS (KILLS)\` %7
+${r?.kills.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - \`%1${e.value}\` %7 kills`).join('\n')}
+
+\`%aMOST NOTORIOUS (ALIGNMENT)\` %7
+${r?.alignment.map((e, i) => `${i + 1}. \`%f${e.name}\` %7 - [${e.value}]`).join('\n')}
+`,
+      options: [
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   admin: (state) => ({
     title: '`%1SYSTEM ADMINISTRATION` %7',
     description: '`%7Deep access protocols active. Modify local reality at your own risk.',
@@ -113,6 +155,17 @@ What are your orders, Captain?`,
       }},
       { label: 'Refill Turns', key: 'T', action: async (s) => {
         return { ...s, player: { ...s.player!, turns: s.player!.maxTurns }, lastMessage: 'Energy banks replenished.' }
+      }},
+      { label: 'Generate Test Bounty', key: 'G', action: async (s) => {
+        dbOps.createBounty({
+          playerId: s.player!.id,
+          type: 'kill',
+          target: 'npc_vex',
+          required: 1,
+          reward: 500,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        })
+        return { ...s, lastMessage: 'Test bounty issued.' }
       }},
       { label: 'Alignment: HERO', key: 'H', action: async (s) => ({ ...s, player: { ...s.player!, alignment: 500 }, lastMessage: 'Alignment set to Heroic.' }) },
       { label: 'Alignment: VILLAIN', key: 'V', action: async (s) => ({ ...s, player: { ...s.player!, alignment: -500 }, lastMessage: 'Alignment set to Villainous.' }) },
@@ -154,25 +207,45 @@ Engine Level: \`%f${state.player?.engineLevel}\` %7 -> [E] Upgrade (\`%e${engine
       ]
     }
   },
-  sector_view: (state) => ({
-    title: '`%eSECTOR VIEW` %7',
-    description: `You are in Sector \`%f${state.currentSector?.id}\`%7.
+  sector_view: (state) => {
+    const deployments = dbOps.getSectorDeployments(state.currentSector!.id)
+    return {
+      title: '`%eSECTOR VIEW` %7',
+      description: `You are in Sector \`%f${state.currentSector?.id}\`%7.
 Planets detected: \`%c${state.currentPlanets.length}\`%7
-${state.currentPlanets.map((p, i) => `  ${i + 1}. ${p.name} (%b${p.type}%7)${p.ownerName ? ` - Owned by %e${p.ownerName}%7` : ' - %aUNOWNED%7'}`).join('\n')}`,
-    options: [
-      ...state.currentPlanets.map((p, i) => ({
-        label: `Land on ${p.name}`,
-        key: (i + 1).toString(),
-        action: async (s: GameState) => ({ 
-          ...s, 
-          selectedPlanetId: p.id,
-          currentScene: 'planet_surface', 
-          lastMessage: `Landing on ${p.name}...` 
-        })
-      })),
-      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
-    ]
-  }),
+${state.currentPlanets.map((p, i) => `  ${i + 1}. ${p.name} (%b${p.type}%7)${p.ownerName ? ` - Owned by %e${p.ownerName}%7` : ' - %aUNOWNED%7'}`).join('\n')}
+
+\`%bSECTOR ASSETS:\` %7
+${deployments.length > 0 ? deployments.map(d => `- \`%f${d.quantity}\` %7 ${d.type}(s) [Owner: ${d.playerName}]`).join('\n') : 'None detected.'}`,
+      options: [
+        ...state.currentPlanets.map((p, i) => ({
+          label: `Land on ${p.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => ({ 
+            ...s, 
+            selectedPlanetId: p.id,
+            currentScene: 'planet_surface', 
+            lastMessage: `Landing on ${p.name}...` 
+          })
+        })),
+        { label: 'Deploy Fighter (500cr)', key: 'F', action: async (s) => {
+          if (s.player!.credits >= 500) {
+            dbOps.deploySectorAsset(s.currentSector!.id, s.player!.id, 'fighter', 1)
+            return { ...s, player: { ...s.player!, credits: s.player!.credits - 500 }, lastMessage: 'Fighter deployed to sector.' }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: 'Deploy Mine (300cr)', key: 'M', action: async (s) => {
+          if (s.player!.credits >= 300) {
+            dbOps.deploySectorAsset(s.currentSector!.id, s.player!.id, 'mine', 1)
+            return { ...s, player: { ...s.player!, credits: s.player!.credits - 300 }, lastMessage: 'Space mine deployed to sector.' }
+          }
+          return { ...s, lastMessage: 'Not enough credits!' }
+        }},
+        { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
+      ]
+    }
+  },
   planet_surface: (state) => {
     const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
     return {
@@ -213,14 +286,80 @@ Welcome to the surface.`,
 
     return {
       title: `\`%eMANAGE: ${planet?.name}\` %7`,
-      description: `Tax Rate: \`%f${(planet?.taxRate || 0) * 100}%\`%7
-Miners: \`%f${(planet?.oreMiners || 0) + (planet?.fuelMiners || 0) + (planet?.equipmentMiners || 0)}\`%7
-Defense: \`%c${planet?.fighters || 0}\`%7 Fighters, \`%c${planet?.shields || 0}%\`%7 Shields`,
+      description: `Tax Rate: \`%f${(planet?.taxRate || 0) * 100}%\` %7 | Access: \`%b${planet?.accessPolicy?.toUpperCase() || 'OPEN'}\` %7
+Miners: \`%f${(planet?.oreMiners || 0) + (planet?.fuelMiners || 0) + (planet?.equipmentMiners || 0)}\` %7
+Defense: \`%c${planet?.fighters || 0}\` %7 Fighters, \`%c${planet?.shields || 0}%\` %7 Shields`,
       options: [
-        { label: 'Set Tax Rate', key: 'T', action: async (s) => ({ ...s, lastMessage: 'Tax adjustment not yet implemented' }) },
-        { label: 'Manage Mining', key: 'M', action: async (s) => ({ ...s, lastMessage: 'Mining management not yet implemented' }) },
+        { label: 'View Daily Report', key: 'R', action: async (s) => ({ ...s, lastMessage: 'Daily report: Population grew by 150. Tax collected: 15 credits.' }) },
+        { label: 'Set Tax Rate', key: 'T', action: async (s) => {
+          const rates = [0.05, 0.10, 0.15, 0.20, 0.25]
+          const currentIdx = rates.indexOf(planet!.taxRate)
+          const nextRate = rates[(currentIdx + 1) % rates.length]
+          dbOps.updatePlanetTaxRate(planet!.id, nextRate)
+          return { ...s, lastMessage: `Tax rate adjusted to ${nextRate * 100}%.` }
+        }},
+        { label: 'Rename Planet', key: 'N', action: async (s) => {
+          // In a real BBS we'd use an input scene, but for now let's just cycle some cool names
+          const names = ['New Tortuga', 'Sanctuary', 'Alpha Base', 'Outpost 9', 'The Rim']
+          const nextName = names[Math.floor(Math.random() * names.length)]
+          dbOps.updatePlanetName(planet!.id, nextName)
+          return { ...s, lastMessage: `Planet renamed to ${nextName}.` }
+        }},
+        { label: 'Toggle Access', key: 'A', action: async (s) => {
+          const policies = ['open', 'faction', 'locked']
+          const currentIdx = policies.indexOf(planet!.accessPolicy || 'open')
+          const nextPolicy = policies[(currentIdx + 1) % policies.length]
+          dbOps.updatePlanetAccess(planet!.id, nextPolicy)
+          return { ...s, lastMessage: `Access policy set to ${nextPolicy.toUpperCase()}.` }
+        }},
+        { label: 'Manage Mining', key: 'M', action: async (s) => ({ ...s, currentScene: 'planet_mining' }) },
         { label: 'Deploy Defenses', key: 'D', action: async (s) => ({ ...s, lastMessage: 'Defense deployment not yet implemented' }) },
         { label: 'Back to Surface', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_surface' }) }
+      ]
+    }
+  },
+  planet_mining: (state) => {
+    const planet = state.currentPlanets.find(p => p.id === state.selectedPlanetId)
+    const totalMiners = (planet?.oreMiners || 0) + (planet?.fuelMiners || 0) + (planet?.equipmentMiners || 0)
+    const unassigned = (planet?.population || 0) - totalMiners
+
+    return {
+      title: `\`%eMINING OPS: ${planet?.name}\` %7`,
+      description: `Total Population: \`%f${planet?.population}\` %7
+Unassigned: \`%a${unassigned}\` %7
+
+Assignments:
+[O] Ore Mining: \`%f${planet?.oreMiners}\` %7
+[F] Fuel Mining: \`%f${planet?.fuelMiners}\` %7
+[E] Equipment:   \`%f${planet?.equipmentMiners}\` %7
+`,
+      options: [
+        { label: 'Assign Ore (+100)', key: 'O', action: async (s) => {
+          if (unassigned >= 100) {
+            dbOps.updatePlanetMiners(planet!.id, (planet!.oreMiners || 0) + 100, planet!.fuelMiners || 0, planet!.equipmentMiners || 0)
+            return { ...s, lastMessage: 'Assigned 100 population to Ore mining.' }
+          }
+          return { ...s, lastMessage: 'Not enough unassigned population!' }
+        }},
+        { label: 'Assign Fuel (+100)', key: 'F', action: async (s) => {
+          if (unassigned >= 100) {
+            dbOps.updatePlanetMiners(planet!.id, planet!.oreMiners || 0, (planet!.fuelMiners || 0) + 100, planet!.equipmentMiners || 0)
+            return { ...s, lastMessage: 'Assigned 100 population to Fuel mining.' }
+          }
+          return { ...s, lastMessage: 'Not enough unassigned population!' }
+        }},
+        { label: 'Assign Equip (+100)', key: 'E', action: async (s) => {
+          if (unassigned >= 100) {
+            dbOps.updatePlanetMiners(planet!.id, planet!.oreMiners || 0, planet!.fuelMiners || 0, (planet!.equipmentMiners || 0) + 100)
+            return { ...s, lastMessage: 'Assigned 100 population to Equipment production.' }
+          }
+          return { ...s, lastMessage: 'Not enough unassigned population!' }
+        }},
+        { label: 'Reset All Roles', key: 'R', action: async (s) => {
+          dbOps.updatePlanetMiners(planet!.id, 0, 0, 0)
+          return { ...s, lastMessage: 'All mining roles reset.' }
+        }},
+        { label: 'Back to Management', key: 'B', action: async (s) => ({ ...s, currentScene: 'planet_manage' }) }
       ]
     }
   },
@@ -275,6 +414,44 @@ Available Warps: ${(state.currentSector?.warps || []).join(', ')}`,
         key: id.toString(),
         action: async (s: GameState) => {
           if (!s.player || s.player.turns <= 0) return { ...s, lastMessage: 'Not enough turns!' }
+          
+          // Check for Blockades in target sector
+          const deployments = dbOps.getSectorDeployments(id)
+          const hostileFighters = deployments.filter(d => 
+            d.type === 'fighter' && 
+            d.playerId !== s.player!.id && 
+            d.playerFaction !== s.player!.faction
+          )
+
+          if (hostileFighters.length > 0) {
+            const totalFighters = hostileFighters.reduce((sum, d) => sum + d.quantity, 0)
+            const attacker: CombatSide = {
+              id: s.player!.id,
+              name: s.player!.name,
+              shields: s.player!.shields || 100,
+              maxShields: (s.player!.shieldLevel || 1) * 100,
+              fighters: 0,
+              weaponPower: 15 + ((s.player!.weaponLevel || 1) * 5),
+              isNpc: false
+            }
+            const defender: CombatSide = {
+              id: `blockade_${id}`,
+              name: 'Sector Blockade',
+              shields: totalFighters * 50,
+              maxShields: totalFighters * 50,
+              fighters: totalFighters,
+              weaponPower: 10 + (totalFighters > 5 ? 10 : 0),
+              isNpc: true
+            }
+            
+            return {
+              ...s,
+              currentScene: 'combat',
+              lastMessage: `INTERCEPTED! You were pulled out of warp by a blockade in Sector ${id}!`,
+              combat: initCombat(attacker, defender)
+            }
+          }
+
           return {
             ...s,
             player: { ...s.player, sectorId: id, turns: s.player.turns - 1 },
@@ -294,6 +471,7 @@ Available Warps: ${(state.currentSector?.warps || []).join(', ')}`,
       description: `You scan the sector.
 Planets: \`%c${state.currentPlanets.length}\`%7
 Other Ships: ${isAvailable ? '1 (Detected: Captain Vex)' : '0'}
+Other Pilots: \`%c${state.onlinePlayers?.length || 0}\`%7
 Hazards: None`,
       options: [
         ...(isAvailable ? [
@@ -330,6 +508,37 @@ Hazards: None`,
           },
 
         ] : []),
+        // Iterate through online players to add Attack options
+        ...(state.onlinePlayers || []).map((p, i) => ({
+          label: `Attack ${p.name}`,
+          key: (i + 1).toString(),
+          action: async (s: GameState) => {
+            const attacker: CombatSide = {
+              id: s.player!.id,
+              name: s.player!.name,
+              shields: s.player!.shields || 100,
+              maxShields: (s.player!.shieldLevel || 1) * 100,
+              fighters: 0,
+              weaponPower: 15 + ((s.player!.weaponLevel || 1) * 5),
+              isNpc: false
+            }
+            const defender: CombatSide = {
+              id: p.id,
+              name: p.name,
+              shields: 100, // We would fetch their real shields here ideally
+              maxShields: 100,
+              fighters: 0,
+              weaponPower: 15,
+              isNpc: false
+            }
+            return {
+              ...s,
+              currentScene: 'combat',
+              lastMessage: null,
+              combat: initCombat(attacker, defender)
+            }
+          }
+        })),
         { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
       ]
     }
@@ -368,15 +577,33 @@ ${log.slice(-5).join('\n')}
           action: async (s) => {
             const loot = Math.floor(Math.random() * 500) + 100
             dbOps.updatePlayerCredits(s.player!.id, loot)
-            dbOps.setNpcCooldown(defender.id, new Date().toISOString())
+            
+            let bountyMsg = ''
+            if (defender.isNpc) {
+              if (defender.id.startsWith('blockade_')) {
+                // Remove the blockade deployment
+                const sectorId = parseInt(defender.id.split('_')[1])
+                const deployments = dbOps.getSectorDeployments(sectorId)
+                const blockade = deployments.find(d => d.type === 'fighter' && d.playerId !== s.player!.id)
+                if (blockade) dbOps.removeSectorDeployment(blockade.id)
+              } else {
+                dbOps.setNpcCooldown(defender.id, new Date().toISOString())
+                const completed = dbOps.updateBountyProgress(s.player!.id, 'kill', defender.id)
+                if (completed) bountyMsg = '`%bBOUNTY COMPLETED!` %7'
+              }
+            } else {
+              dbOps.insertGlobalEvent('PLAYER_KILLED', `Captain ${attacker.name} defeated Captain ${defender.name} in Sector ${s.player!.sectorId}.`)
+            }
+            
             return { 
               ...s, 
               player: { 
                 ...s.player!, 
                 credits: s.player!.credits + loot,
-                alignment: s.player!.alignment + 10
+                alignment: s.player!.alignment + (defender.isNpc ? 10 : -10),
+                kills: s.player!.kills + 1
               },
-              lastMessage: `Victory! You looted ${loot} credits from ${defender.name}. Your reputation increases.` 
+              lastMessage: `Victory! You looted ${loot} credits from ${defender.name}. ${bountyMsg}` 
             }
           } 
         }] : [{ 
@@ -429,6 +656,14 @@ ${log.slice(-5).join('\n')}
           }
         }
       }
+    ]
+  }),
+  messages: (state) => ({
+    title: '`%bSECTOR COMM LINK` %7',
+    description: `Open channel for Sector \`%f${state.currentSector?.id}\`%7. 
+\`%a${state.onlinePlayers?.length || 0}\`%7 other pilot(s) detected on scanners.`,
+    options: [
+      { label: 'Back to Bridge', key: 'B', action: async (s) => ({ ...s, currentScene: 'bridge' }) }
     ]
   }),
   npc_dialogue: (state) => ({

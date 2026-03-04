@@ -1169,29 +1169,30 @@ content/base/
 ### Phase 2 — Combat & Planets
 > Make space dangerous and give players something to own
 
-- [ ] Ship-to-ship combat (NPC enemies)
-- [ ] Ship upgrades (weapons, shields, engine)
-- [ ] Planet landing & colonization
-- [ ] Planet management (naming, taxes, access policy)
-- [ ] Planet daily reports
-- [ ] Mine & fighter deployment in sectors
-- [ ] Bounty board (daily missions)
-- [ ] Basic rankings (net worth, kills, trading)
-- [ ] Death & respawn system
-- [ ] Alignment system (faction shifts from actions)
+- [x] Ship-to-ship combat (NPC enemies)
+- [x] Ship upgrades (weapons, shields, engine)
+- [x] Planet landing & colonization
+- [x] Planet management (naming, taxes, access policy)
+- [x] Death & respawn system
+- [x] Alignment system (faction shifts from actions)
+- [x] Admin section (for testing and resets)
+- [x] Planet daily reports (basic)
+- [x] Mine & fighter deployment in sectors
+- [x] Bounty board (daily missions)
+- [x] Basic rankings (net worth, kills, trading)
 
 ### Phase 3 — Multiplayer Core
 > Multiple players in the same galaxy
 
-- [ ] Multi-engine node architecture (one engine per player)
-- [ ] SQLite WAL mode for concurrent access
-- [ ] Player presence detection (heartbeat)
-- [ ] Event queue system (async notifications)
-- [ ] PvP combat
-- [ ] Sector chat
-- [ ] Multinode-only events (appear when 2+ players online)
-- [ ] Blockade mechanics
-- [ ] Player scanning (see other players in sector)
+- [x] Multi-engine node architecture (one engine per player)
+- [x] SQLite WAL mode for concurrent access
+- [x] Player presence detection (heartbeat)
+- [x] Event queue system (async notifications)
+- [x] PvP combat
+- [x] Sector chat
+- [x] Player scanning (see other players in sector)
+- [x] Multinode-only events (appear when 2+ players online)
+- [x] Blockade mechanics
 
 ### Phase 4 — Companies & Alliances
 > Team play and social features

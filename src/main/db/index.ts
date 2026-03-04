@@ -84,6 +84,39 @@ export function initDb(): void {
     })()
     console.log('Migration complete.')
   }
+
+  // Check for bounties table
+  const hasBounties = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='bounties'").get()
+  if (!hasBounties) {
+    console.log('Migrating: Adding bounties table...')
+    db.exec(`
+      CREATE TABLE bounties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        playerId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        target TEXT,
+        required INTEGER NOT NULL,
+        progress INTEGER DEFAULT 0,
+        reward INTEGER NOT NULL,
+        completed BOOLEAN DEFAULT FALSE,
+        expiresAt TEXT NOT NULL
+      )
+    `)
+  }
+
+  // Check for planet_reports table
+  const hasReports = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='planet_reports'").get()
+  if (!hasReports) {
+    console.log('Migrating: Adding planet_reports table...')
+    db.exec(`
+      CREATE TABLE planet_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        planetId TEXT NOT NULL,
+        report TEXT NOT NULL,
+        createdAt TEXT NOT NULL
+      )
+    `)
+  }
 }
 
 export function getDb(): Database.Database {
@@ -125,6 +158,22 @@ export const dbOps = {
   claimPlanet: (planetId: string, playerId: string, ownerType: 'player' | 'company') => {
     return db.prepare('UPDATE planets SET ownerId = ?, ownerType = ? WHERE id = ?').run(playerId, ownerType, planetId)
   },
+  updatePlanetMiners: (planetId: string, ore: number, fuel: number, equipment: number) => {
+    return db.prepare(`
+      UPDATE planets 
+      SET oreMiners = ?, fuelMiners = ?, equipmentMiners = ? 
+      WHERE id = ?
+    `).run(ore, fuel, equipment, planetId)
+  },
+  updatePlanetTaxRate: (planetId: string, taxRate: number) => {
+    return db.prepare('UPDATE planets SET taxRate = ? WHERE id = ?').run(taxRate, planetId)
+  },
+  updatePlanetName: (planetId: string, name: string) => {
+    return db.prepare('UPDATE planets SET name = ? WHERE id = ?').run(name, planetId)
+  },
+  updatePlanetAccess: (planetId: string, access: string) => {
+    return db.prepare('UPDATE planets SET accessPolicy = ? WHERE id = ?').run(access, planetId)
+  },
   getNpcCooldown: (npcId: string) => {
     return db.prepare('SELECT value FROM world_settings WHERE key = ?').get(`cooldown_npc_${npcId}`)
   },
@@ -142,5 +191,107 @@ export const dbOps = {
   },
   refillPlayerTurns: (playerId: string) => {
     return db.prepare('UPDATE players SET turns = maxTurns WHERE id = ?').run(playerId)
+  },
+  updatePlayerHeartbeat: (playerId: string) => {
+    return db.prepare("UPDATE players SET lastSeen = datetime('now') WHERE id = ?").run(playerId)
+  },
+  getOnlinePlayersInSector: (sectorId: number, excludePlayerId: string) => {
+    // Online in the last 2 minutes (120 seconds)
+    return db.prepare(`
+      SELECT id, name, faction, alignment, shipId, level 
+      FROM players 
+      WHERE sectorId = ? AND id != ? AND lastSeen > datetime('now', '-120 seconds')
+    `).all(sectorId, excludePlayerId)
+  },
+  insertSectorMessage: (sectorId: number, playerId: string, message: string) => {
+    return db.prepare(`
+      INSERT INTO sector_messages (sectorId, playerId, message, createdAt) 
+      VALUES (?, ?, ?, datetime('now'))
+    `).run(sectorId, playerId, message)
+  },
+  getSectorMessages: (sectorId: number, limit: number = 10) => {
+    return db.prepare(`
+      SELECT sm.id, sm.message, sm.createdAt, p.name as playerName
+      FROM sector_messages sm
+      LEFT JOIN players p ON sm.playerId = p.id
+      WHERE sm.sectorId = ?
+      ORDER BY sm.id DESC
+      LIMIT ?
+    `).all(sectorId, limit).reverse()
+  },
+  insertGlobalEvent: (type: string, payload: string) => {
+    return db.prepare(`
+      INSERT INTO events (targetPlayerId, type, payload, createdAt)
+      VALUES ('GLOBAL', ?, ?, datetime('now'))
+    `).run(type, payload)
+  },
+  getGlobalEvents: (limit: number = 5) => {
+    return db.prepare(`
+      SELECT id, type, payload, createdAt
+      FROM events
+      WHERE targetPlayerId = 'GLOBAL'
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(limit)
+  },
+  getPlayerBounties: (playerId: string) => {
+    return db.prepare('SELECT * FROM bounties WHERE playerId = ? AND completed = 0').all(playerId)
+  },
+  createBounty: (bounty: any) => {
+    const stmt = db.prepare(`
+      INSERT INTO bounties (playerId, type, target, required, reward, expiresAt)
+      VALUES (@playerId, @type, @target, @required, @reward, @expiresAt)
+    `)
+    return stmt.run(bounty)
+  },
+  updateBountyProgress: (playerId: string, type: string, target: string) => {
+    // Increment progress for matching bounties
+    db.prepare(`
+      UPDATE bounties 
+      SET progress = progress + 1 
+      WHERE playerId = ? AND type = ? AND target = ? AND completed = 0
+    `).run(playerId, type, target)
+
+    // Mark as completed if requirement met
+    const completed = db.prepare(`
+      SELECT id, reward FROM bounties 
+      WHERE playerId = ? AND type = ? AND target = ? AND progress >= required AND completed = 0
+    `).all(playerId, type, target) as any[]
+
+    for (const b of completed) {
+      db.prepare('UPDATE bounties SET completed = 1 WHERE id = ?').run(b.id)
+      db.prepare('UPDATE players SET credits = credits + ? WHERE id = ?').run(b.reward, playerId)
+    }
+    
+    return completed.length > 0
+  },
+  getRankings: () => {
+    return {
+      netWorth: db.prepare(`
+        SELECT name, (credits + (weaponLevel * 1000) + (shieldLevel * 1000)) as value 
+        FROM players 
+        ORDER BY value DESC 
+        LIMIT 10
+      `).all(),
+      kills: db.prepare('SELECT name, kills as value FROM players ORDER BY kills DESC LIMIT 10').all(),
+      alignment: db.prepare('SELECT name, alignment as value FROM players ORDER BY ABS(alignment) DESC LIMIT 10').all()
+    }
+  },
+  deploySectorAsset: (sectorId: number, playerId: string, type: string, quantity: number) => {
+    return db.prepare(`
+      INSERT INTO sector_deployments (sectorId, playerId, type, quantity, deployedAt)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(sectorId, playerId, type, quantity)
+  },
+  getSectorDeployments: (sectorId: number) => {
+    return db.prepare(`
+      SELECT sd.*, p.name as playerName, p.faction as playerFaction
+      FROM sector_deployments sd
+      LEFT JOIN players p ON sd.playerId = p.id
+      WHERE sd.sectorId = ?
+    `).all(sectorId)
+  },
+  removeSectorDeployment: (id: number) => {
+    return db.prepare('DELETE FROM sector_deployments WHERE id = ?').run(id)
   }
 }

@@ -12,7 +12,12 @@ let currentState: GameState = {
   lastMessage: null,
   currentPlanets: [],
   selectedPlanetId: null,
-  combat: null
+  combat: null,
+  onlinePlayers: [],
+  chatMessages: [],
+  globalEvents: [],
+  rankings: null,
+  bounties: []
 }
 
 function createWindow(): void {
@@ -58,19 +63,33 @@ app.whenReady().then(() => {
     if (currentState.currentScene === 'login') {
       playerList = dbOps.getAllPlayers()
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList)
+    if (currentState.player) {
+      currentState.bounties = dbOps.getPlayerBounties(currentState.player.id) as any
+    }
+    if (currentState.currentScene === 'rankings') {
+      currentState.rankings = dbOps.getRankings() as any
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
   })
+ipcMain.handle('execute-action', async (_, key: string) => {
+  const db = getDb()
+  const vm = getSceneViewModel(currentState)
+  const option = vm.options.find((o) => o.key === key)
 
-  ipcMain.handle('execute-action', async (_, key: string) => {
-    const db = getDb()
-    const vm = getSceneViewModel(currentState)
-    const option = vm.options.find((o) => o.key === key)
-    
-    if (option) {
-      const newState = await option.action(currentState)
-      if (newState) {
-        // Persist Player State if changed
-        if (newState.player && newState.player !== currentState.player) {
+  if (option) {
+    // Clear last message when taking an action that changes scenes
+    const oldScene = currentState.currentScene
+    const newState = await option.action(currentState)
+
+    if (newState) {
+      if (newState.currentScene !== oldScene) {
+        newState.lastMessage = null
+      }
+
+      // Persist Player State if changed
+      if (newState.player && newState.player !== currentState.player) {
+// ... (rest of the persist logic)
+
           const p = newState.player
           db.prepare(`
             UPDATE players SET 
@@ -80,9 +99,11 @@ app.whenReady().then(() => {
               shields = ?, 
               weaponLevel = ?, 
               shieldLevel = ?, 
-              engineLevel = ?
+              engineLevel = ?,
+              alignment = ?,
+              kills = ?
             WHERE id = ?
-          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.id)
+          `).run(p.credits, p.turns, p.sectorId, p.shields, p.weaponLevel, p.shieldLevel, p.engineLevel, p.alignment, p.kills || 0, p.id)
           
           // If sector changed, update planets
           if (p.sectorId !== currentState.player?.sectorId) {
@@ -102,7 +123,48 @@ app.whenReady().then(() => {
     if (currentState.currentScene === 'login') {
       playerList = dbOps.getAllPlayers()
     }
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList)
+    if (currentState.player) {
+      currentState.bounties = dbOps.getPlayerBounties(currentState.player.id) as any
+    }
+    if (currentState.currentScene === 'rankings') {
+      currentState.rankings = dbOps.getRankings() as any
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, playerList, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
+  })
+
+  ipcMain.handle('poll-state', async () => {
+    if (currentState.player) {
+      dbOps.updatePlayerHeartbeat(currentState.player.id)
+      currentState.onlinePlayers = dbOps.getOnlinePlayersInSector(currentState.player.sectorId, currentState.player.id) as any
+      currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
+      currentState.globalEvents = dbOps.getGlobalEvents() as any
+      currentState.bounties = dbOps.getPlayerBounties(currentState.player.id) as any
+      
+      // Multinode-only events (if 2+ players online)
+      const allOnline = db.prepare("SELECT count(*) as count FROM players WHERE lastSeen > datetime('now', '-60 seconds')").get().count
+      if (allOnline >= 2 && Math.random() < 0.05) { // 5% chance per poll
+        const eventType = 'MULTINODE_EVENT'
+        const payloads = [
+          'A massive trade convoy has been spotted passing through the Neutral rim!',
+          'Solar flares are disrupting warp signatures across the galaxy.',
+          'A strange alien signal is broadcasting from deep space.'
+        ]
+        dbOps.insertGlobalEvent(eventType, payloads[Math.floor(Math.random() * payloads.length)])
+      }
+
+      if (currentState.currentScene === 'rankings') {
+        currentState.rankings = dbOps.getRankings() as any
+      }
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
+  })
+
+  ipcMain.handle('send-message', async (_, message: string) => {
+    if (currentState.player) {
+      dbOps.insertSectorMessage(currentState.player.sectorId, currentState.player.id, message)
+      currentState.chatMessages = dbOps.getSectorMessages(currentState.player.sectorId) as any
+    }
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
   })
 
   ipcMain.handle('create-character', async (_, name: string, faction: string) => {
@@ -134,7 +196,8 @@ app.whenReady().then(() => {
       faction: player.faction as any,
       weaponLevel: 1,
       shieldLevel: 1,
-      engineLevel: 1
+      engineLevel: 1,
+      kills: 0
     }
     currentState.currentSector = {
       ...sectorData,
@@ -143,7 +206,19 @@ app.whenReady().then(() => {
     currentState.currentPlanets = planets
     currentState.currentScene = 'bridge'
     currentState.lastMessage = `Welcome, ${name}!`
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId)
+    dbOps.insertGlobalEvent('NEW_PLAYER', `Captain ${name} has entered the galaxy.`)
+    
+    // Generate initial bounty
+    dbOps.createBounty({
+      playerId: currentState.player.id,
+      type: 'kill',
+      target: 'npc_vex',
+      required: 1,
+      reward: 500,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    })
+
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
   })
 
   ipcMain.handle('login-id', async (_, playerId: string) => {
@@ -153,7 +228,7 @@ app.whenReady().then(() => {
     
     if (!player) {
       currentState.lastMessage = `Pilot record not found.`
-      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+      return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
     }
 
     const sectorData = dbOps.getSector(player.sectorId)
@@ -167,7 +242,8 @@ app.whenReady().then(() => {
       faction: player.faction as any,
       weaponLevel: player.weaponLevel || 1,
       shieldLevel: player.shieldLevel || 1,
-      engineLevel: player.engineLevel || 1
+      engineLevel: player.engineLevel || 1,
+      kills: player.kills || 0
     }
     currentState.currentSector = {
       ...sectorData,
@@ -176,7 +252,8 @@ app.whenReady().then(() => {
     currentState.currentPlanets = planets
     currentState.currentScene = 'bridge'
     currentState.lastMessage = `Welcome back, Captain ${player.name}.`
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage)
+    dbOps.insertGlobalEvent('PLAYER_LOGIN', `Captain ${player.name} has resumed command.`)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
   })
 
   ipcMain.handle('claim-planet', async (_, planetId: string) => {
@@ -184,7 +261,9 @@ app.whenReady().then(() => {
     dbOps.claimPlanet(planetId, currentState.player.id, 'player')
     currentState.currentPlanets = dbOps.getPlanetsBySector(currentState.player.sectorId)
     currentState.lastMessage = 'Planet claimed!'
-    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId)
+    const planet = currentState.currentPlanets.find(p => p.id === planetId)
+    dbOps.insertGlobalEvent('PLANET_CLAIM', `Captain ${currentState.player.name} claimed ${planet?.name} in Sector ${currentState.player.sectorId}.`)
+    return toSerializable(getSceneViewModel(currentState), currentState.lastMessage, currentState.selectedPlanetId, undefined, currentState.onlinePlayers, currentState.chatMessages, currentState.globalEvents, currentState.rankings, currentState.bounties)
   })
 
   createWindow()

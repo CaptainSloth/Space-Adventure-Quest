@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { parseSansi } from './utils/sansi'
 
 interface SceneOption {
@@ -12,23 +12,34 @@ interface SceneViewModel {
   options: SceneOption[]
   ascii?: string[]
   lastMessage?: string | null
+  selectedPlanetId?: string | null
+  playerList?: { id: string, name: string }[]
+  onlinePlayers?: any[]
+  chatMessages?: any[]
+  globalEvents?: any[]
 }
 
 const App: React.FC = () => {
   const [vm, setVm] = useState<SceneViewModel | null>(null)
   const [name, setName] = useState('')
+  const [chatInput, setChatInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
+  const [notifications, setNotifications] = useState<string[]>([])
+  
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const lastEventId = useRef<number>(0)
 
   const refreshScene = useCallback(async () => {
-    console.log('Renderer: refreshScene calling get-scene')
     try {
       // @ts-ignore
       const newVm = await window.api.invoke('get-scene')
-      console.log('Renderer: received vm:', newVm)
       setVm(newVm)
       if (newVm.selectedPlanetId !== undefined) {
         setSelectedPlanetId(newVm.selectedPlanetId)
+      }
+      if (newVm.globalEvents && newVm.globalEvents.length > 0) {
+        lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
       }
     } catch (err) {
       console.error('Renderer: Error in get-scene:', err)
@@ -40,6 +51,44 @@ const App: React.FC = () => {
   useEffect(() => {
     refreshScene()
   }, [refreshScene])
+
+  // Polling loop for Phase 3 multiplayer
+  useEffect(() => {
+    if (!vm) return
+    const isGameScene = !['SPACE ADVENTURE QUEST', 'CHARACTER LOGIN', 'CHARACTER REGISTRATION'].some(t => vm.title.includes(t))
+    if (!isGameScene) return
+
+    const interval = setInterval(async () => {
+      try {
+        // @ts-ignore
+        const newVm = await window.api.invoke('poll-state')
+        setVm(newVm)
+
+        // Process new global events for notifications
+        if (newVm.globalEvents) {
+          const newEvents = newVm.globalEvents.filter((e: any) => e.id > lastEventId.current)
+          if (newEvents.length > 0) {
+            lastEventId.current = Math.max(...newVm.globalEvents.map((e: any) => e.id))
+            setNotifications(prev => [...prev, ...newEvents.map((e: any) => e.payload)])
+            // Clear notification after 5 seconds
+            setTimeout(() => {
+              setNotifications(prev => prev.slice(1))
+            }, 5000)
+          }
+        }
+      } catch (e) {
+        console.error('Polling error', e)
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [vm?.title])
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [vm?.chatMessages])
 
   const handleAction = async (key: string) => {
     setLoading(true)
@@ -72,9 +121,17 @@ const App: React.FC = () => {
     setLoading(false)
   }
 
+  const handleSendMessage = async () => {
+    if (!chatInput.trim()) return
+    const msg = chatInput
+    setChatInput('')
+    // @ts-ignore
+    const newVm = await window.api.invoke('send-message', msg)
+    setVm(newVm)
+  }
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger actions if typing in an input or textarea
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         return
@@ -112,6 +169,24 @@ const App: React.FC = () => {
 
   return (
     <div className="container">
+      {/* Real-time Pop-up Notifications */}
+      <div className="notification-overlay">
+        {notifications.map((note, i) => (
+          <div key={i} className="notification-toast">
+            {parseSansi(`%b[ALERT]%7 ${note}`)}
+          </div>
+        ))}
+      </div>
+
+      {/* Global Event Feed (Ticker) */}
+      {vm.globalEvents && vm.globalEvents.length > 0 && (
+        <div className="event-feed">
+          <marquee scrollamount="5">
+            {vm.globalEvents.slice(0, 5).map(e => `[${new Date(e.createdAt).toLocaleTimeString()}] ${e.payload}`).join(' |***| ')}
+          </marquee>
+        </div>
+      )}
+
       <div className="header">
         <h1>{parseSansi(vm.title)}</h1>
       </div>
@@ -127,6 +202,36 @@ const App: React.FC = () => {
       <div className="description">
         {parseSansi(vm.description)}
       </div>
+
+      {/* Sector Chat UI */}
+      {vm.title.includes('COMM LINK') && (
+        <div className="chat-interface">
+          <div className="chat-messages">
+            {vm.chatMessages?.map((msg: any) => (
+              <div key={msg.id} className="chat-message">
+                <span className="chat-time">[{new Date(msg.createdAt).toLocaleTimeString()}]</span>
+                <span className="chat-author"> {msg.playerName}:</span>
+                <span className="chat-text"> {msg.message}</span>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="chat-input-row">
+            <span>&gt; </span>
+            <input 
+              type="text" 
+              value={chatInput} 
+              onChange={(e) => setChatInput(e.target.value)} 
+              autoFocus
+              className="bbs-input chat-input"
+              placeholder="Broadcast to sector..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSendMessage()
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {vm.lastMessage && (
         <div className="message-box">
