@@ -62,4 +62,4 @@ The game uses a custom inline color system for that authentic BBS feel:
 *   `~` - Toggle **Blink**
 
 ## 📜 License
-MIT
+This project is licensed under the PolyForm Noncommercial License 1.0.0. See the LICENSE file for details. This means you are free to use, modify, and share this code for personal or academic purposes, but commercial use is strictly prohibited.
